@@ -3,6 +3,9 @@
 # grok
 mygrok
 
+#private files
+docs/tests/
+
 # dependencies
 /node_modules
 /.pnp
