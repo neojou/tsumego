@@ -2,7 +2,7 @@
 
 ### Issue tracker
 
-Issues live in GitHub Issues for `neojou/tsumego` (via `gh`). See `docs/agents/issue-tracker.md`.
+Issues live as markdown files under `.scratch/<feature>/`. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 
