@@ -64,10 +64,41 @@ class DiagramDraftTest {
             targets = "A1,A2,B1",
         )
         var draft = ConfirmDraft(null, problem.rect, problem.edges, problem.stones)
-        draft = draft.toggleTarget(pt("A1"))
+        draft = draft.applyClick(pt("A1"), targetMode = true)
         assertEquals(setOf(pt("A1"), pt("A2"), pt("B1")), draft.targets)
-        draft = draft.toggleTarget(pt("A2"))
+        draft = draft.applyClick(pt("A2"), targetMode = true)
         assertEquals(setOf(pt("A1"), pt("B1")), draft.targets)
+    }
+
+    @Test
+    fun targetModeCanMarkTwoSeparateStrings() {
+        val problem = cornerProblem(
+            files = 5,
+            ranks = 3,
+            black = "A1,A2,E2,E3",
+            white = "C2",
+            goal = Goal.Live,
+            targets = "A1,A2",
+        )
+        var draft = ConfirmDraft(null, problem.rect, problem.edges, problem.stones, goal = Goal.Live)
+        draft = draft.applyClick(pt("A1"), targetMode = true)
+        draft = draft.applyClick(pt("E2"), targetMode = true)
+        assertEquals(setOf(pt("A1"), pt("A2"), pt("E2"), pt("E3")), draft.targets)
+        assertEquals(null, draft.validationError())
+    }
+
+    @Test
+    fun cycleModeDoesNotRecordTargets() {
+        val problem = cornerProblem(
+            black = "A2",
+            white = "",
+            goal = Goal.Live,
+            targets = "A2",
+        )
+        var draft = ConfirmDraft(null, problem.rect, problem.edges, problem.stones, goal = Goal.Live)
+        draft = draft.applyClick(pt("B2"), targetMode = false)
+        assertTrue(draft.targets.isEmpty())
+        assertNotNull(draft.validationError())
     }
 
     @Test

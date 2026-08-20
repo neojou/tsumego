@@ -37,6 +37,9 @@ data class ConfirmDraft(
         return copy(targets = targets + position.stringAt(point))
     }
 
+    fun applyClick(point: Point, targetMode: Boolean): ConfirmDraft =
+        if (targetMode) toggleTarget(point) else cycleStone(point)
+
     fun withRect(newRect: BoardRect): ConfirmDraft {
         val newStones = stones.filterKeys { newRect.contains(it) }
         val newTargets = targets.filter { newRect.contains(it) && it in newStones }.toSet()
@@ -75,7 +78,7 @@ fun emptyDraft(image: ByteArray?): ConfirmDraft {
                 imageBytes = image,
                 rect = layout.rect,
                 edges = layout.edges,
-                stones = emptyMap(),
+                stones = layout.stones,
                 imageGrid = layout.imageGrid,
             )
         }

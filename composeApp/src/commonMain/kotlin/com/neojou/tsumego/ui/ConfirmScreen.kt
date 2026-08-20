@@ -43,7 +43,7 @@ fun ConfirmScreen(
             FilterChip(
                 selected = targetMode,
                 onClick = { targetMode = !targetMode },
-                label = { Text(if (targetMode) "標目標中" else "標目標") },
+                label = { Text(if (targetMode) "標目標中（${draft.targets.size}）" else "標目標") },
             )
             EdgeChip("左", draft.edges.left) {
                 onChange(draft.copy(edges = draft.edges.copy(left = it)))
@@ -84,7 +84,7 @@ fun ConfirmScreen(
             overlayImage = image,
             imageGrid = draft.imageGrid,
             onClick = { point ->
-                onChange(if (targetMode) draft.toggleTarget(point) else draft.cycleStone(point))
+                onChange(draft.applyClick(point, targetMode))
             },
             modifier = Modifier.weight(1f).fillMaxWidth(),
         )

@@ -4,7 +4,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -72,24 +72,26 @@ fun BoardView(
     modifier: Modifier = Modifier,
 ) {
     val measurer = rememberTextMeasurer()
-    val clickKey = remember(rect, enabled, imageGrid, overlayImage?.width, overlayImage?.height) {
-        listOf(rect, enabled, imageGrid, overlayImage?.width, overlayImage?.height)
-    }
+    val onClickLatest = rememberUpdatedState(onClick)
+    val overlayLatest = rememberUpdatedState(overlayImage)
+    val gridLatest = rememberUpdatedState(imageGrid)
+    val rectLatest = rememberUpdatedState(rect)
+    val enabledLatest = rememberUpdatedState(enabled)
     Canvas(
         modifier = modifier
             .fillMaxSize()
-            .pointerInput(clickKey) {
-                if (!enabled) return@pointerInput
+            .pointerInput(Unit) {
                 detectTapGestures { offset ->
+                    if (!enabledLatest.value) return@detectTapGestures
                     hitOnBoard(
                         canvasWidth = size.width.toFloat(),
                         canvasHeight = size.height.toFloat(),
-                        rect = rect,
-                        overlayImage = overlayImage,
-                        imageGrid = imageGrid,
+                        rect = rectLatest.value,
+                        overlayImage = overlayLatest.value,
+                        imageGrid = gridLatest.value,
                         x = offset.x,
                         y = offset.y,
-                    )?.let(onClick)
+                    )?.let { onClickLatest.value(it) }
                 }
             },
     ) {
@@ -120,13 +122,19 @@ fun BoardView(
             drawOverlayGrid(overlay, edges)
             drawOverlayCoordinates(overlay, measurer)
             val spacing = min(overlay.spacingX, overlay.spacingY)
-            for (point in targets) {
-                val c = overlay.center(point)
-                drawCircle(Color(0x66C62828), radius = spacing * 0.22f, center = Offset(c.x, c.y))
-            }
             for ((point, color) in stones) {
                 val c = overlay.center(point)
+                drawCircle(Color(0xFFD7B074), radius = spacing * 0.50f, center = Offset(c.x, c.y))
                 drawStone(Offset(c.x, c.y), spacing * 0.46f, color)
+            }
+            for (point in targets) {
+                val c = overlay.center(point)
+                drawCircle(
+                    color = Color(0xFFE53935),
+                    radius = spacing * 0.50f,
+                    center = Offset(c.x, c.y),
+                    style = Stroke(width = spacing * 0.10f),
+                )
             }
             if (lastMove != null && lastMove in stones) {
                 val c = overlay.center(lastMove)

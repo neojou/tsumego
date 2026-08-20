@@ -1,11 +1,13 @@
 package com.neojou.tsumego.diagram
 
 import com.neojou.tsumego.board.EdgeKind
+import com.neojou.tsumego.board.StoneColor
 import com.neojou.tsumego.pt
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class SmallTrickLayoutTest {
@@ -28,7 +30,6 @@ class SmallTrickLayoutTest {
     @Test
     fun emptyDraftKeepsThePhotoCropEvenWithoutFilledStones() {
         val draft = emptyDraft(bytes)
-        assertTrue(draft.stones.isEmpty())
         assertEquals(pt("O14").file, draft.rect.left)
         assertEquals(pt("T19").file, draft.rect.right)
         assertEquals(14, draft.rect.bottom)
@@ -44,6 +45,36 @@ class SmallTrickLayoutTest {
             rect = draft.rect,
         )
         assertEquals(pt("T18"), overlay.hit(729f, 322f))
+    }
+
+    @Test
+    fun photoStonesMatchThePrintedColorsBeforeFlip() {
+        val draft = emptyDraft(bytes)
+        // Independent of the code: T18 is the black stone on the right edge,
+        // Q19 the top white stone, O19 an empty intersection.
+        assertEquals(StoneColor.Black, draft.stones[pt("T18")])
+        assertEquals(StoneColor.White, draft.stones[pt("Q19")])
+        assertNull(draft.stones[pt("O19")])
+    }
+
+    @Test
+    fun whiteFirstFlipsThePrintedStoneColors() {
+        val draft = readDiagram(EmptyDiagramReader, bytes, StoneColor.White)
+        assertEquals(StoneColor.White, draft.stones[pt("T18")])
+        assertEquals(StoneColor.Black, draft.stones[pt("Q19")])
+        assertNull(draft.stones[pt("O19")])
+    }
+
+    @Test
+    fun whiteFirstCanMarkTwoBlackStringsAndConfirmLive() {
+        var draft = readDiagram(EmptyDiagramReader, bytes, StoneColor.White)
+            .copy(goal = com.neojou.tsumego.board.Goal.Live)
+        draft = draft.applyClick(pt("Q19"), targetMode = true)
+        draft = draft.applyClick(pt("P15"), targetMode = true)
+        assertTrue(pt("Q19") in draft.targets)
+        assertTrue(pt("P15") in draft.targets)
+        assertTrue(draft.targets.size > 1)
+        assertEquals(null, draft.validationError())
     }
 
     @Test
