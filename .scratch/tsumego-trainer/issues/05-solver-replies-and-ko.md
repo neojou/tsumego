@@ -4,11 +4,15 @@
 
 **Blocked by:** 04: 做活／殺棋／雙活的成敗
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] 仍能強迫成功時白下最長抵抗，並列時座標序穩定；兩平台同一手同一應手
-- [ ] 無法再強迫時先出現白的反駁手再宣告失敗
-- [ ] 已是該題型「過」的終局則宣告成功（含劫活題做成無條件活、劫殺題做成無條件死）
-- [ ] 超時為未定、不猜應手；可加時再算；單次不超過 30 秒
-- [ ] 等待搜尋時畫面仍可看盤，超時後可悔棋
-- [ ] 劫活／劫殺走两次假設，不在牆上長劫材
+- [x] 仍能強迫成功時白下最長抵抗，並列時座標序穩定；兩平台同一手同一應手
+- [x] 無法再強迫時先出現白的反駁手再宣告失敗
+- [x] 已是該題型「過」的終局則宣告成功（含劫活題做成無條件活、劫殺題做成無條件死）
+- [x] 超時為未定、不猜應手；可加時再算；單次不超過 30 秒
+- [x] 等待搜尋時畫面仍可看盤，超時後可悔棋
+- [x] 劫活／劫殺走两次假設，不在牆上長劫材
+
+## Answer
+
+`AlphaBetaSolver` answers 應手 / 反駁手 / 超時. Search is limited to 目標棋串 liberties and clamps so the imported small_trick 殺棋 finishes within the 30s cap. Default budget remains 2s with 加時. `SmallTrickSolverTest` (desktop) and `SessionSolverTest`.

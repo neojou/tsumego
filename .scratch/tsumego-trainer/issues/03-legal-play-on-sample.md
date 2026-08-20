@@ -4,10 +4,14 @@
 
 **Blocked by:** 02: 打開題目檔，主畫面顯示題目盤
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] 點空交叉點落下黑子並輪到白；stub 白停後可再下黑
-- [ ] 無氣的對方棋串被提離盤面；倒撲合法；真自殺被拒絕且盤面不變
-- [ ] 牆上、已有子、矩形外、同型反覆的點擊被拒絕且不算一手
-- [ ] 停會記入對局；悔棋撤一對，可連悔到開始局面
-- [ ] 對局測試走對局介面（含 stub 解題），不測 Canvas 像素
+- [x] 點空交叉點落下黑子並輪到白；stub 白停後可再下黑
+- [x] 無氣的對方棋串被提離盤面；倒撲合法；真自殺被拒絕且盤面不變
+- [x] 牆上、已有子、矩形外、同型反覆的點擊被拒絕且不算一手
+- [x] 停會記入對局；悔棋撤一對，可連悔到開始局面
+- [x] 對局測試走對局介面（含 stub 解題），不測 Canvas 像素
+
+## Answer
+
+`Session` is the 對局 seam: legal play, capture, 倒撲, suicide, 同型反覆, 停, 悔棋. Tests in `SessionRulesTest` and `SmallTrickPlayTest`.

@@ -88,6 +88,22 @@ object AlwaysPassSolver : Solver {
     override fun solve(input: SolverInput): SolverResult = SolverResult.Resist(Action.Pass)
 }
 
+const val SMALL_TRICK_JSON = """
+{
+    "format": "tsumego",
+    "version": 1,
+    "rect": { "left": "O", "right": "T", "bottom": 14, "top": 19 },
+    "edges": { "left": "wall", "right": "real", "bottom": "wall", "top": "real" },
+    "stones": {
+        "P15": "black", "Q17": "black", "Q18": "black", "Q19": "black",
+        "R14": "black", "R15": "black", "R16": "black",
+        "R17": "white", "R18": "white", "S16": "white", "T18": "white"
+    },
+    "goal": "kill",
+    "targets": ["R17", "R18", "S16", "T18"]
+}
+"""
+
 object ImmediateTimeoutSolver : Solver {
     override fun solve(input: SolverInput): SolverResult = SolverResult.Timeout
 }

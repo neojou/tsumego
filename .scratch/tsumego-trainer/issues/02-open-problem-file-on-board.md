@@ -4,11 +4,15 @@
 
 **Blocked by:** 01: 從 small_trick.png 確認後產出題目檔
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] File → Open 能打開 01 的 `.tsumego.json`，主畫面盤面與檔內子、矩形、四邊一致
-- [ ] File → Save 寫回同一格式，再開不變
-- [ ] 牆不是可點的交叉點；真盤邊看得到且與中腹有別
-- [ ] 座標標號與棋譜圖慣例一致（A1 左下，19 在上，T 在右）
-- [ ] 棋子有光影並隨盤面縮放；About 仍顯示「詰碁」
-- [ ] 缺欄位或雙活題只有一色目標的檔打不開
+- [x] File → Open 能打開 01 的 `.tsumego.json`，主畫面盤面與檔內子、矩形、四邊一致
+- [x] File → Save 寫回同一格式，再開不變
+- [x] 牆不是可點的交叉點；真盤邊看得到且與中腹有別
+- [x] 座標標號與棋譜圖慣例一致（A1 左下，19 在上，T 在右）
+- [x] 棋子有光影並隨盤面縮放；About 仍顯示「詰碁」
+- [x] 缺欄位或雙活題只有一色目標的檔打不開
+
+## Answer
+
+File → Open / Save round-trips `.tsumego.json`. The 題目盤 is the cropped rectangle with 真盤邊 vs 牆, A–T skip I coordinates, and Canvas stones. Illegal files are rejected with a message. File → Samples was dropped at the user's request.

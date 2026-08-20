@@ -2,6 +2,7 @@ package com.neojou.tsumego.diagram
 
 import com.neojou.tsumego.board.EdgeKind
 import com.neojou.tsumego.board.StoneColor
+import com.neojou.tsumego.diagram.desktop.DesktopDiagramReader
 import com.neojou.tsumego.pt
 import java.io.File
 import kotlin.test.Test
@@ -58,8 +59,19 @@ class SmallTrickLayoutTest {
     }
 
     @Test
+    fun wasmReaderKeepsTheCropButDoesNotFillStones() {
+        val draft = EmptyDiagramReader.read(bytes, StoneColor.Black)
+        assertEquals(pt("O14").file, draft.rect.left)
+        assertEquals(pt("T19").file, draft.rect.right)
+        assertEquals(14, draft.rect.bottom)
+        assertEquals(19, draft.rect.top)
+        assertNotNull(draft.imageGrid)
+        assertTrue(draft.stones.isEmpty())
+    }
+
+    @Test
     fun whiteFirstFlipsThePrintedStoneColors() {
-        val draft = readDiagram(EmptyDiagramReader, bytes, StoneColor.White)
+        val draft = readDiagram(DesktopDiagramReader(), bytes, StoneColor.White)
         assertEquals(StoneColor.White, draft.stones[pt("T18")])
         assertEquals(StoneColor.Black, draft.stones[pt("Q19")])
         assertNull(draft.stones[pt("O19")])
@@ -67,7 +79,7 @@ class SmallTrickLayoutTest {
 
     @Test
     fun whiteFirstCanMarkTwoBlackStringsAndConfirmLive() {
-        var draft = readDiagram(EmptyDiagramReader, bytes, StoneColor.White)
+        var draft = readDiagram(DesktopDiagramReader(), bytes, StoneColor.White)
             .copy(goal = com.neojou.tsumego.board.Goal.Live)
         draft = draft.applyClick(pt("Q19"), targetMode = true)
         draft = draft.applyClick(pt("P15"), targetMode = true)

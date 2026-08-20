@@ -85,8 +85,35 @@ data class Position(
         return own.size == 1 && next.liberties(own).size == 1
     }
 
-    fun simpleKoCaptures(toPlay: StoneColor): List<Point> =
-        playable.filter { stones[it] == null && isSimpleKoCapture(it, toPlay) }.sorted()
+    /**
+     * Only liberties of opponent 1-stone, 1-liberty strings can be a simple ko take.
+     */
+    fun simpleKoCaptures(toPlay: StoneColor): List<Point> {
+        val takes = ArrayList<Point>()
+        val seen = HashSet<Point>()
+        for (p in stones.keys) {
+            if (stones[p] != toPlay.opposite || p in seen) continue
+            val string = stringAt(p)
+            seen.addAll(string)
+            if (string.size != 1) continue
+            val libs = liberties(string)
+            if (libs.size != 1) continue
+            val take = libs.single()
+            if (isSimpleKoCapture(take, toPlay)) takes += take
+        }
+        return takes.sorted()
+    }
+
+    fun hasKoCandidate(): Boolean {
+        val seen = HashSet<Point>()
+        for (p in stones.keys) {
+            if (p in seen) continue
+            val string = stringAt(p)
+            seen.addAll(string)
+            if (string.size == 1 && liberties(string).size == 1) return true
+        }
+        return false
+    }
 
     companion object {
         fun initial(problem: Problem): Position {

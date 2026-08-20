@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: resolved
 
 # 詰碁訓練機
 

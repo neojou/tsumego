@@ -23,7 +23,7 @@ internal fun classify(position: Position, targets: Set<Point>, bothPassed: Boole
         return Outcome.Seki
     }
 
-    val ko = classifyKo(position, targets, onBoard, bothPassed)
+    val ko = if (position.hasKoCandidate()) classifyKo(position, targets, onBoard, bothPassed) else null
     if (ko != null) return ko
 
     if (bothPassed && allTargetsDeadAfterPass(onBoard, position, bensonBlack, bensonWhite)) {

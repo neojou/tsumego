@@ -67,7 +67,7 @@ fun interface DiagramReader {
 
 object EmptyDiagramReader : DiagramReader {
     override fun read(image: ByteArray, diagramFirst: StoneColor): ConfirmDraft =
-        emptyDraft(image)
+        emptyDraft(image).copy(stones = emptyMap(), targets = emptySet())
 }
 
 fun emptyDraft(image: ByteArray?): ConfirmDraft {
