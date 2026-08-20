@@ -4,10 +4,14 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
@@ -26,8 +30,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.neojou.tools.LogLevel
 import com.neojou.tools.MyLog
@@ -173,31 +179,50 @@ private fun PlayScreen(session: Session) {
     val snap by session.state.collectAsState()
     val clickable = snap.status == PlayStatus.InProgress
     Column(Modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(statusText(snap.status), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Text(statusText(snap.status, snap.searchPaths.size), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
         Text("題型：${snap.problem.goal.label()}", style = MaterialTheme.typography.bodyMedium)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = { session.pass() }, enabled = clickable) { Text("停") }
             OutlinedButton(onClick = { session.undo() }, enabled = snap.canUndo) { Text("悔棋") }
-            OutlinedButton(onClick = { session.addTime() }, enabled = snap.canAddTime) { Text("加時") }
         }
-        BoardView(
-            rect = snap.problem.rect,
-            edges = snap.problem.edges,
-            stones = snap.stones,
-            lastMove = snap.lastMove,
-            enabled = clickable,
-            onClick = { session.tryMove(it) },
-            modifier = Modifier.weight(1f).fillMaxWidth(),
-        )
+        Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            BoardView(
+                rect = snap.problem.rect,
+                edges = snap.problem.edges,
+                stones = snap.stones,
+                lastMove = snap.lastMove,
+                enabled = clickable,
+                onClick = { session.tryMove(it) },
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+            )
+            Column(Modifier.width(320.dp).fillMaxHeight()) {
+                Text("搜尋路徑", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                Text(
+                    "${snap.searchPaths.size} 條",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                )
+                LazyColumn(Modifier.weight(1f).fillMaxWidth().padding(top = 8.dp)) {
+                    items(snap.searchPaths.asReversed()) { line ->
+                        Text(
+                            line,
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(bottom = 6.dp),
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
-private fun statusText(status: PlayStatus): String = when (status) {
+private fun statusText(status: PlayStatus, pathCount: Int = 0): String = when (status) {
     PlayStatus.InProgress -> "輪黑"
-    PlayStatus.WaitingForReply -> "思考中"
+    PlayStatus.WaitingForReply -> if (pathCount == 0) "思考中" else "思考中（${pathCount} 條路徑）"
     PlayStatus.Success -> "成功"
     PlayStatus.Failure -> "失敗"
-    PlayStatus.Timeout -> "超時（未定）"
+    PlayStatus.Timeout -> "未定"
 }
 
 @Composable

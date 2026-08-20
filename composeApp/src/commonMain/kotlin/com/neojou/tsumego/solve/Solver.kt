@@ -39,10 +39,11 @@ data class SolverInput(
     val position: Position,
     val consecutivePasses: Int,
     val budget: Budget,
+    val onPath: (String) -> Unit = {},
 )
 
 fun interface Solver {
-    fun solve(input: SolverInput): SolverResult
+    suspend fun solve(input: SolverInput): SolverResult
 }
 
 private sealed class Force {
@@ -55,9 +56,8 @@ private sealed class Force {
 class AlphaBetaSolver(
     private val maxDepth: Int = 48,
 ) : Solver {
-    override fun solve(input: SolverInput): SolverResult {
-        if (input.budget.expired()) return SolverResult.Timeout
-        val search = Search(input.problem, input.budget)
+    override suspend fun solve(input: SolverInput): SolverResult {
+        val search = Search(input.problem, input.budget, input.onPath)
         var proven: Force? = null
         var provenDepth = 0
         for (depth in 1..maxDepth) {
@@ -67,6 +67,7 @@ class AlphaBetaSolver(
                 toPlay = StoneColor.White,
                 passes = input.consecutivePasses,
                 depth = depth,
+                path = emptyList(),
             )
             when (result) {
                 is Force.TimedOut -> return SolverResult.Timeout
@@ -90,19 +91,20 @@ class AlphaBetaSolver(
 private class Search(
     private val problem: Problem,
     private val budget: Budget,
+    private val onPath: (String) -> Unit,
 ) {
     private val proven = HashMap<String, Force>()
     private val outcomes = HashMap<String, Outcome>()
     private val nodes = IntArray(1)
 
-    fun pickResist(input: SolverInput, proveDepth: Int): SolverResult {
+    suspend fun pickResist(input: SolverInput, proveDepth: Int): SolverResult {
         val scored = ArrayList<Triple<Action, Int, Int>>()
         for (action in actions(input.position, StoneColor.White, problem.targets)) {
             if (budget.expired()) return SolverResult.Timeout
             val next = applyAction(input.position, action, StoneColor.White, input.consecutivePasses) ?: continue
             var found: Force.Yes? = null
             for (depth in 1..proveDepth) {
-                val child = canForce(next.first, StoneColor.Black, next.second, depth)
+                val child = canForce(next.first, StoneColor.Black, next.second, depth, listOf(action))
                 when (child) {
                     is Force.TimedOut -> return SolverResult.Timeout
                     is Force.Yes -> {
@@ -125,14 +127,14 @@ private class Search(
         return SolverResult.Resist(best.first)
     }
 
-    fun pickRefute(input: SolverInput, proveDepth: Int): SolverResult {
+    suspend fun pickRefute(input: SolverInput, proveDepth: Int): SolverResult {
         val preventing = ArrayList<Action>()
         for (action in actions(input.position, StoneColor.White, problem.targets)) {
             if (budget.expired()) return SolverResult.Timeout
             val next = applyAction(input.position, action, StoneColor.White, input.consecutivePasses) ?: continue
             var child: Force = Force.Unknown
             for (depth in 1..proveDepth) {
-                child = canForce(next.first, StoneColor.Black, next.second, depth)
+                child = canForce(next.first, StoneColor.Black, next.second, depth, listOf(action))
                 if (child is Force.TimedOut) return SolverResult.Timeout
                 if (child is Force.Yes || child is Force.No) break
             }
@@ -143,17 +145,18 @@ private class Search(
         return SolverResult.Refute(stones.firstOrNull() ?: Action.Pass)
     }
 
-    fun canForce(
+    suspend fun canForce(
         position: Position,
         toPlay: StoneColor,
         passes: Int,
         depth: Int,
+        path: List<Action>,
     ): Force {
         nodes[0]++
-        if ((nodes[0] and 7) == 0 && budget.expired()) return Force.TimedOut
-
-        val key = "${position.key}|${toPlay.name}|$passes|${position.past.sorted().joinToString()}"
-        proven[key]?.let { return it }
+        if ((nodes[0] and 7) == 0) {
+            kotlinx.coroutines.yield()
+            if (budget.expired()) return Force.TimedOut
+        }
 
         val bothPassed = passes >= 2
         val outcome = cachedOutcome(position, bothPassed)
@@ -163,26 +166,35 @@ private class Search(
             else -> null
         }
         if (terminal != null) {
+            if (path.isNotEmpty()) {
+                val result = if (terminal is Force.Yes) "成功" else "失敗"
+                onPath(formatSearchPath(path, result))
+            }
+            val key = ttKey(position, toPlay, passes)
             proven[key] = terminal
             return terminal
         }
+
+        val key = ttKey(position, toPlay, passes)
+        proven[key]?.let { return it }
         if (depth <= 0) return Force.Unknown
 
         val moves = actions(position, toPlay, problem.targets)
         val result = if (toPlay == StoneColor.Black) {
-            orMoves(position, passes, depth, moves)
+            orMoves(position, passes, depth, moves, path)
         } else {
-            andMoves(position, passes, depth, moves)
+            andMoves(position, passes, depth, moves, path)
         }
         if (result is Force.Yes || result is Force.No) proven[key] = result
         return result
     }
 
-    private fun orMoves(
+    private suspend fun orMoves(
         position: Position,
         passes: Int,
         depth: Int,
         moves: List<Action>,
+        path: List<Action>,
     ): Force {
         var anyUnknown = false
         var sawTimeout = false
@@ -190,7 +202,7 @@ private class Search(
         var allNo = true
         for (action in moves) {
             val next = applyAction(position, action, StoneColor.Black, passes) ?: continue
-            when (val child = canForce(next.first, StoneColor.White, next.second, depth - 1)) {
+            when (val child = canForce(next.first, StoneColor.White, next.second, depth - 1, path + action)) {
                 is Force.TimedOut -> sawTimeout = true
                 is Force.Yes -> return Force.Yes(child.proofPly + 1, child.nodes)
                 is Force.No -> totalNodes += child.nodes
@@ -208,11 +220,12 @@ private class Search(
         }
     }
 
-    private fun andMoves(
+    private suspend fun andMoves(
         position: Position,
         passes: Int,
         depth: Int,
         moves: List<Action>,
+        path: List<Action>,
     ): Force {
         var anyUnknown = false
         var sawTimeout = false
@@ -221,7 +234,7 @@ private class Search(
         var allYes = true
         for (action in moves) {
             val next = applyAction(position, action, StoneColor.White, passes) ?: continue
-            when (val child = canForce(next.first, StoneColor.Black, next.second, depth - 1)) {
+            when (val child = canForce(next.first, StoneColor.Black, next.second, depth - 1, path + action)) {
                 is Force.TimedOut -> {
                     sawTimeout = true
                     allYes = false
@@ -244,6 +257,9 @@ private class Search(
             else -> Force.Unknown
         }
     }
+
+    private fun ttKey(position: Position, toPlay: StoneColor, passes: Int): String =
+        "${position.key}|${toPlay.name}|$passes|${position.past.sorted().joinToString()}"
 
     private fun cachedOutcome(position: Position, bothPassed: Boolean): Outcome {
         val key = "${position.key}|$bothPassed"
@@ -316,4 +332,17 @@ internal fun applyAction(
 private fun actionRank(action: Action): Int = when (action) {
     Action.Pass -> Int.MAX_VALUE
     is Action.Move -> action.point.file * 20 + action.point.rank
+}
+
+internal fun formatSearchPath(path: List<Action>, result: String): String {
+    var blackToPlay = false
+    val steps = path.map { action ->
+        val who = if (blackToPlay) "黑" else "白"
+        blackToPlay = !blackToPlay
+        when (action) {
+            Action.Pass -> "${who}停"
+            is Action.Move -> "${who}下 ${action.point.label}"
+        }
+    }
+    return (steps + "結果 $result").joinToString(" -> ")
 }

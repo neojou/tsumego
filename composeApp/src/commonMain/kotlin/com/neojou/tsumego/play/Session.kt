@@ -8,11 +8,10 @@ import com.neojou.tsumego.board.isSuccess
 import com.neojou.tsumego.classify.classify
 import com.neojou.tsumego.solve.Action
 import com.neojou.tsumego.solve.AlphaBetaSolver
-import com.neojou.tsumego.solve.Budget
 import com.neojou.tsumego.solve.Solver
 import com.neojou.tsumego.solve.SolverInput
 import com.neojou.tsumego.solve.SolverResult
-import com.neojou.tsumego.solve.timeBudget
+import com.neojou.tsumego.solve.UnlimitedBudget
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -20,6 +19,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -39,7 +39,7 @@ data class PlaySnapshot(
     val lastMove: Point?,
     val lastMoveIsPass: Boolean,
     val canUndo: Boolean,
-    val canAddTime: Boolean,
+    val searchPaths: List<String> = emptyList(),
 )
 
 private data class Ply(
@@ -54,13 +54,11 @@ class Session(
     private val solver: Solver = AlphaBetaSolver(),
     private val scope: CoroutineScope,
     private val searchDispatcher: CoroutineDispatcher = Dispatchers.Default,
-    private val newBudget: (limitMs: Long) -> Budget = { ms -> timeBudget(ms) },
 ) {
     private var position: Position = Position.initial(problem)
     private var consecutivePasses: Int = 0
     private val history = ArrayList<Ply>()
     private var searchJob: Job? = null
-    private var limitMs: Long = INITIAL_LIMIT_MS
 
     private val _state = MutableStateFlow(snapshotOf(PlayStatus.InProgress, lastMove = null, lastMoveIsPass = false))
     val state: StateFlow<PlaySnapshot> = _state.asStateFlow()
@@ -85,15 +83,7 @@ class Session(
         position = last.positionBefore
         consecutivePasses = last.passesBefore
         history.removeAt(history.lastIndex)
-        limitMs = INITIAL_LIMIT_MS
-        publish(PlayStatus.InProgress, lastMove = null, lastMoveIsPass = false)
-        return true
-    }
-
-    fun addTime(): Boolean {
-        if (_state.value.status != PlayStatus.Timeout) return false
-        limitMs = (limitMs + ADD_LIMIT_MS).coerceAtMost(MAX_LIMIT_MS)
-        launchSearch()
+        publish(PlayStatus.InProgress, lastMove = null, lastMoveIsPass = false, clearPaths = true)
         return true
     }
 
@@ -115,19 +105,23 @@ class Session(
         val outcome = classify(position, problem.targets, both)
         when {
             problem.goal.isSuccess(outcome) ->
-                publish(PlayStatus.Success, lastPoint(action), action is Action.Pass)
+                publish(PlayStatus.Success, lastPoint(action), action is Action.Pass, clearPaths = true)
             both ->
-                publish(PlayStatus.Failure, lastPoint(action), action is Action.Pass)
+                publish(PlayStatus.Failure, lastPoint(action), action is Action.Pass, clearPaths = true)
             else -> launchSearch()
         }
     }
 
     private fun launchSearch() {
         searchJob?.cancel()
-        publish(PlayStatus.WaitingForReply, lastPoint(history.lastOrNull()?.black), history.lastOrNull()?.black is Action.Pass)
+        publish(
+            PlayStatus.WaitingForReply,
+            lastPoint(history.lastOrNull()?.black),
+            history.lastOrNull()?.black is Action.Pass,
+            clearPaths = true,
+        )
         val frozenPosition = position
         val frozenPasses = consecutivePasses
-        val frozenLimit = limitMs
         searchJob = scope.launch {
             val result = withContext(searchDispatcher) {
                 solver.solve(
@@ -135,7 +129,13 @@ class Session(
                         problem = problem,
                         position = frozenPosition,
                         consecutivePasses = frozenPasses,
-                        budget = newBudget(frozenLimit),
+                        budget = UnlimitedBudget,
+                        onPath = { line ->
+                            _state.update { old ->
+                                if (old.searchPaths.size >= 1000 || line in old.searchPaths) old
+                                else old.copy(searchPaths = old.searchPaths + line)
+                            }
+                        },
                     ),
                 )
             }
@@ -146,7 +146,7 @@ class Session(
     private fun applySolverResult(result: SolverResult) {
         when (result) {
             SolverResult.Timeout -> {
-                publish(PlayStatus.Timeout, lastPoint(history.lastOrNull()?.black), history.lastOrNull()?.black is Action.Pass)
+                publish(PlayStatus.WaitingForReply, lastPoint(history.lastOrNull()?.black), history.lastOrNull()?.black is Action.Pass)
             }
             is SolverResult.Resist -> applyWhite(result.action, failing = false)
             is SolverResult.Refute -> applyWhite(result.action, failing = true)
@@ -163,7 +163,6 @@ class Session(
         consecutivePasses = if (action is Action.Pass) consecutivePasses + 1 else 0
         position = nextPos
         history[idx] = history[idx].copy(white = action)
-        limitMs = INITIAL_LIMIT_MS
         val both = consecutivePasses >= 2
         val outcome = classify(position, problem.targets, both)
         val status = when {
@@ -174,11 +173,23 @@ class Session(
         publish(status, lastPoint(action), action is Action.Pass)
     }
 
-    private fun publish(status: PlayStatus, lastMove: Point?, lastMoveIsPass: Boolean) {
-        _state.value = snapshotOf(status, lastMove, lastMoveIsPass)
+    private fun publish(
+        status: PlayStatus,
+        lastMove: Point?,
+        lastMoveIsPass: Boolean,
+        clearPaths: Boolean = false,
+    ) {
+        _state.update { old ->
+            snapshotOf(status, lastMove, lastMoveIsPass, if (clearPaths) emptyList() else old.searchPaths)
+        }
     }
 
-    private fun snapshotOf(status: PlayStatus, lastMove: Point?, lastMoveIsPass: Boolean) = PlaySnapshot(
+    private fun snapshotOf(
+        status: PlayStatus,
+        lastMove: Point?,
+        lastMoveIsPass: Boolean,
+        searchPaths: List<String> = emptyList(),
+    ) = PlaySnapshot(
         problem = problem,
         stones = position.stones,
         toPlay = when (status) {
@@ -190,14 +201,8 @@ class Session(
         lastMove = lastMove,
         lastMoveIsPass = lastMoveIsPass,
         canUndo = history.isNotEmpty(),
-        canAddTime = status == PlayStatus.Timeout && limitMs < MAX_LIMIT_MS,
+        searchPaths = searchPaths,
     )
 
     private fun lastPoint(action: Action?): Point? = (action as? Action.Move)?.point
-
-    companion object {
-        const val INITIAL_LIMIT_MS = 2_000L
-        const val ADD_LIMIT_MS = 2_000L
-        const val MAX_LIMIT_MS = 30_000L
-    }
 }

@@ -1,6 +1,6 @@
 # 05: 解題應手、反駁與劫
 
-**What to build:** stub 換成真解題器。使用者下黑之後，程式在時限內判定是否仍能強迫題型之「過」：能且已過則成功；能但仍未定則下最長抵抗應手；不能則先下反駁手再宣告失敗。超時維持未定、不下應手，可加時（+2 秒，單次上限 30 秒，預設 2 秒）或悔棋。搜尋不卡死畫面。劫活／劫殺用贏劫與輸劫两次假設。Desktop 與 Wasm 對同一手給同一應手。最長抵抗：證明深度，再節點數，再座標 A1 < A2 < B1。
+**What to build:** stub 換成真解題器。使用者下黑之後，程式判定是否仍能強迫題型之「過」：能且已過則成功；能但仍未定則下最長抵抗應手；不能則先下反駁手再宣告失敗。搜尋不設時限；已走完的搜尋路徑列在盤右。悔棋中止搜尋。劫活／劫殺用贏劫與輸劫两次假設。Desktop 與 Wasm 對同一手給同一應手。最長抵抗：證明深度，再節點數，再座標 A1 < A2 < B1。
 
 **Blocked by:** 04: 做活／殺棋／雙活的成敗
 
@@ -9,10 +9,10 @@
 - [x] 仍能強迫成功時白下最長抵抗，並列時座標序穩定；兩平台同一手同一應手
 - [x] 無法再強迫時先出現白的反駁手再宣告失敗
 - [x] 已是該題型「過」的終局則宣告成功（含劫活題做成無條件活、劫殺題做成無條件死）
-- [x] 超時為未定、不猜應手；可加時再算；單次不超過 30 秒
-- [x] 等待搜尋時畫面仍可看盤，超時後可悔棋
+- [x] 搜尋不設時限；盤右列出搜尋路徑（白下 xx -> 黑下 xx -> 結果 xx）
+- [x] 等待搜尋時畫面仍可看盤與新路徑，可悔棋中止
 - [x] 劫活／劫殺走两次假設，不在牆上長劫材
 
 ## Answer
 
-`AlphaBetaSolver` answers 應手 / 反駁手 / 超時. Search is limited to 目標棋串 liberties and clamps so the imported small_trick 殺棋 finishes within the 30s cap. Default budget remains 2s with 加時. `SmallTrickSolverTest` (desktop) and `SessionSolverTest`.
+`AlphaBetaSolver` answers 應手 / 反駁手，並把已走完的搜尋路徑寫進 `PlaySnapshot.searchPaths`。不設時限（ADR-0019）。`SessionSolverTest` 與 `SmallTrickSolverTest`。

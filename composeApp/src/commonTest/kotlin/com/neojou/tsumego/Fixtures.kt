@@ -10,11 +10,9 @@ import com.neojou.tsumego.board.StoneColor
 import com.neojou.tsumego.board.lowerLeftCorner
 import com.neojou.tsumego.play.Session
 import com.neojou.tsumego.solve.Action
-import com.neojou.tsumego.solve.Budget
 import com.neojou.tsumego.solve.Solver
 import com.neojou.tsumego.solve.SolverInput
 import com.neojou.tsumego.solve.SolverResult
-import com.neojou.tsumego.solve.UnlimitedBudget
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 
@@ -75,17 +73,15 @@ fun boxedProblem(
 fun CoroutineScope.testSession(
     problem: Problem,
     solver: Solver = AlwaysPassSolver,
-    budget: Budget = UnlimitedBudget,
 ): Session = Session(
     problem = problem,
     solver = solver,
     scope = this,
     searchDispatcher = Dispatchers.Unconfined,
-    newBudget = { budget },
 )
 
 object AlwaysPassSolver : Solver {
-    override fun solve(input: SolverInput): SolverResult = SolverResult.Resist(Action.Pass)
+    override suspend fun solve(input: SolverInput): SolverResult = SolverResult.Resist(Action.Pass)
 }
 
 const val SMALL_TRICK_JSON = """
@@ -105,12 +101,12 @@ const val SMALL_TRICK_JSON = """
 """
 
 object ImmediateTimeoutSolver : Solver {
-    override fun solve(input: SolverInput): SolverResult = SolverResult.Timeout
+    override suspend fun solve(input: SolverInput): SolverResult = SolverResult.Timeout
 }
 
 class ScriptedSolver(private val replies: List<Action>) : Solver {
     private var index = 0
-    override fun solve(input: SolverInput): SolverResult {
+    override suspend fun solve(input: SolverInput): SolverResult {
         val action = replies.getOrElse(index) { Action.Pass }
         index++
         return SolverResult.Resist(action)
