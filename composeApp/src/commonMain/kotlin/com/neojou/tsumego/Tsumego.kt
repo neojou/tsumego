@@ -43,7 +43,6 @@ import com.neojou.tsumego.io.platformDiagramReader
 import com.neojou.tsumego.io.saveProblemText
 import com.neojou.tsumego.library.ProblemLibrary
 import com.neojou.tsumego.library.ProblemLoad
-import com.neojou.tsumego.library.Samples
 import com.neojou.tsumego.play.PlayStatus
 import com.neojou.tsumego.play.Session
 import com.neojou.tsumego.ui.BoardView
@@ -97,43 +96,24 @@ fun Tsumego() {
         MyTopMenuItem(
             id = "file",
             label = "File",
-            children = listOf(
-                MyTopMenuItem(
-                    id = "open",
-                    label = "Open",
-                    onClick = {
-                        scope.launch {
-                            val text = openProblemText() ?: return@launch
-                            when (val loaded = ProblemLibrary.decode(text)) {
-                                is ProblemLoad.Ok -> startProblem(loaded.problem)
-                                is ProblemLoad.Err -> errorMessage = loaded.message
-                            }
+            children = fileMenuItems(
+                saveEnabled = currentProblem != null,
+                onOpen = {
+                    scope.launch {
+                        val text = openProblemText() ?: return@launch
+                        when (val loaded = ProblemLibrary.decode(text)) {
+                            is ProblemLoad.Ok -> startProblem(loaded.problem)
+                            is ProblemLoad.Err -> errorMessage = loaded.message
                         }
-                    },
-                ),
-                MyTopMenuItem(
-                    id = "save",
-                    label = "Save",
-                    enabled = currentProblem != null,
-                    onClick = {
-                        val problem = currentProblem ?: return@MyTopMenuItem
-                        scope.launch {
-                            val ok = saveProblemText("problem.tsumego.json", ProblemLibrary.encode(problem))
-                            if (!ok) errorMessage = "無法寫入題目檔"
-                        }
-                    },
-                ),
-                MyTopMenuItem(
-                    id = "samples",
-                    label = "Samples",
-                    children = Samples.all.map { sample ->
-                        MyTopMenuItem(
-                            id = sample.id,
-                            label = sample.name,
-                            onClick = { startProblem(sample.problem) },
-                        )
-                    },
-                ),
+                    }
+                },
+                onSave = {
+                    val problem = currentProblem ?: return@fileMenuItems
+                    scope.launch {
+                        val ok = saveProblemText("problem.tsumego.json", ProblemLibrary.encode(problem))
+                        if (!ok) errorMessage = "無法寫入題目檔"
+                    }
+                },
             ),
         ),
         MyTopMenuItem(
@@ -166,7 +146,7 @@ fun Tsumego() {
                 )
                 currentSession != null -> PlayScreen(currentSession)
                 else -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("請從 File → Samples 開題，或用 Input 匯入棋譜圖")
+                    Text("請用 Input 匯入棋譜圖，或 File → Open 打開題目檔")
                 }
             }
         }

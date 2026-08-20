@@ -20,7 +20,11 @@ import kotlin.math.abs
  */
 class DesktopDiagramReader : DiagramReader {
     override fun read(image: ByteArray, diagramFirst: StoneColor): ConfirmDraft {
-        return runCatching { recognize(image) }.getOrNull() ?: emptyDraft(image)
+        val aligned = emptyDraft(image)
+        val filled = runCatching { recognize(image) }.getOrNull() ?: return aligned
+        return aligned.copy(
+            stones = filled.stones.filterKeys { aligned.rect.contains(it) },
+        )
     }
 }
 

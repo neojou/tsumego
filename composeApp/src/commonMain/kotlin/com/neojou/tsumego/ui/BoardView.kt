@@ -26,6 +26,9 @@ import com.neojou.tsumego.board.EdgeKind
 import com.neojou.tsumego.board.Edges
 import com.neojou.tsumego.board.Point
 import com.neojou.tsumego.board.StoneColor
+import com.neojou.tsumego.diagram.ImageGrid
+import com.neojou.tsumego.diagram.OverlayLayout
+import com.neojou.tsumego.diagram.overlayLayout
 import org.jetbrains.skia.Image
 import kotlin.math.min
 
@@ -63,81 +66,181 @@ fun BoardView(
     targets: Set<Point> = emptySet(),
     lastMove: Point? = null,
     overlayImage: ImageBitmap? = null,
+    imageGrid: ImageGrid? = null,
     enabled: Boolean = true,
     onClick: (Point) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val measurer = rememberTextMeasurer()
-    val clickKey = remember(rect, enabled) { rect to enabled }
+    val clickKey = remember(rect, enabled, imageGrid, overlayImage?.width, overlayImage?.height) {
+        listOf(rect, enabled, imageGrid, overlayImage?.width, overlayImage?.height)
+    }
     Canvas(
         modifier = modifier
             .fillMaxSize()
             .pointerInput(clickKey) {
                 if (!enabled) return@pointerInput
                 detectTapGestures { offset ->
-                    val pad = min(size.width, size.height) * 0.08f
-                    val files = (rect.right - rect.left + 1)
-                    val ranks = (rect.top - rect.bottom + 1)
-                    val innerW = size.width - pad * 2
-                    val innerH = size.height - pad * 2
-                    val spacing = min(innerW / (files - 1).coerceAtLeast(1), innerH / (ranks - 1).coerceAtLeast(1))
-                    val origin = Offset(
-                        x = (size.width - spacing * (files - 1)) / 2f,
-                        y = (size.height - spacing * (ranks - 1)) / 2f,
-                    )
-                    val geom = BoardGeom(spacing, origin, rect)
-                    geom.hit(offset)?.let(onClick)
+                    hitOnBoard(
+                        canvasWidth = size.width.toFloat(),
+                        canvasHeight = size.height.toFloat(),
+                        rect = rect,
+                        overlayImage = overlayImage,
+                        imageGrid = imageGrid,
+                        x = offset.x,
+                        y = offset.y,
+                    )?.let(onClick)
                 }
             },
     ) {
-        val pad = min(size.width, size.height) * 0.08f
-        val files = (rect.right - rect.left + 1)
-        val ranks = (rect.top - rect.bottom + 1)
-        val innerW = size.width - pad * 2
-        val innerH = size.height - pad * 2
-        val spacing = min(innerW / (files - 1).coerceAtLeast(1), innerH / (ranks - 1).coerceAtLeast(1))
-        val origin = Offset(
-            x = (size.width - spacing * (files - 1)) / 2f,
-            y = (size.height - spacing * (ranks - 1)) / 2f,
-        )
-        val geom = BoardGeom(spacing, origin, rect)
-        val grid = Rect(
-            left = origin.x,
-            top = origin.y,
-            right = origin.x + spacing * (files - 1),
-            bottom = origin.y + spacing * (ranks - 1),
-        )
-        drawWood(grid, spacing)
-        if (overlayImage != null) {
-            drawImage(
-                image = overlayImage,
-                dstSize = androidx.compose.ui.unit.IntSize(
-                    (grid.width + spacing).toInt().coerceAtLeast(1),
-                    (grid.height + spacing).toInt().coerceAtLeast(1),
-                ),
-                dstOffset = androidx.compose.ui.unit.IntOffset(
-                    (grid.left - spacing / 2).toInt(),
-                    (grid.top - spacing / 2).toInt(),
-                ),
-                alpha = 0.38f,
+        val image = overlayImage
+        val overlay = image?.let { bmp ->
+            overlayLayout(
+                canvasWidth = size.width,
+                canvasHeight = size.height,
+                imageWidth = bmp.width.toFloat(),
+                imageHeight = bmp.height.toFloat(),
+                imageGrid = imageGrid ?: ImageGrid(0f, 0f, 1f, 1f),
+                rect = rect,
             )
         }
-        drawWalls(grid, edges, spacing)
-        drawGrid(geom, edges)
-        drawStars(geom)
-        drawCoordinates(geom, measurer)
-        for (point in targets) {
-            val c = geom.center(point)
-            drawCircle(Color(0x66C62828), radius = spacing * 0.22f, center = c)
+        if (image != null && overlay != null) {
+            drawImage(
+                image = image,
+                dstSize = androidx.compose.ui.unit.IntSize(
+                    overlay.imageWidth.toInt().coerceAtLeast(1),
+                    overlay.imageHeight.toInt().coerceAtLeast(1),
+                ),
+                dstOffset = androidx.compose.ui.unit.IntOffset(
+                    overlay.imageLeft.toInt(),
+                    overlay.imageTop.toInt(),
+                ),
+                alpha = 1f,
+            )
+            drawOverlayGrid(overlay, edges)
+            drawOverlayCoordinates(overlay, measurer)
+            val spacing = min(overlay.spacingX, overlay.spacingY)
+            for (point in targets) {
+                val c = overlay.center(point)
+                drawCircle(Color(0x66C62828), radius = spacing * 0.22f, center = Offset(c.x, c.y))
+            }
+            for ((point, color) in stones) {
+                val c = overlay.center(point)
+                drawStone(Offset(c.x, c.y), spacing * 0.46f, color)
+            }
+            if (lastMove != null && lastMove in stones) {
+                val c = overlay.center(lastMove)
+                val mark = if (stones[lastMove] == StoneColor.Black) Color.White else Color.DarkGray
+                drawCircle(mark, radius = spacing * 0.12f, center = Offset(c.x, c.y), style = Stroke(width = spacing * 0.04f))
+            }
+        } else {
+            val pad = min(size.width, size.height) * 0.08f
+            val files = (rect.right - rect.left + 1)
+            val ranks = (rect.top - rect.bottom + 1)
+            val innerW = size.width - pad * 2
+            val innerH = size.height - pad * 2
+            val spacing = min(innerW / (files - 1).coerceAtLeast(1), innerH / (ranks - 1).coerceAtLeast(1))
+            val origin = Offset(
+                x = (size.width - spacing * (files - 1)) / 2f,
+                y = (size.height - spacing * (ranks - 1)) / 2f,
+            )
+            val geom = BoardGeom(spacing, origin, rect)
+            val grid = Rect(
+                left = origin.x,
+                top = origin.y,
+                right = origin.x + spacing * (files - 1),
+                bottom = origin.y + spacing * (ranks - 1),
+            )
+            drawWood(grid, spacing)
+            drawWalls(grid, edges, spacing)
+            drawGrid(geom, edges)
+            drawStars(geom)
+            drawCoordinates(geom, measurer)
+            for (point in targets) {
+                val c = geom.center(point)
+                drawCircle(Color(0x66C62828), radius = spacing * 0.22f, center = c)
+            }
+            for ((point, color) in stones) {
+                drawStone(geom.center(point), spacing * 0.46f, color)
+            }
+            if (lastMove != null && lastMove in stones) {
+                val c = geom.center(lastMove)
+                val mark = if (stones[lastMove] == StoneColor.Black) Color.White else Color.DarkGray
+                drawCircle(mark, radius = spacing * 0.12f, center = c, style = Stroke(width = spacing * 0.04f))
+            }
         }
-        for ((point, color) in stones) {
-            drawStone(geom.center(point), spacing * 0.46f, color)
-        }
-        if (lastMove != null && lastMove in stones) {
-            val c = geom.center(lastMove)
-            val mark = if (stones[lastMove] == StoneColor.Black) Color.White else Color.DarkGray
-            drawCircle(mark, radius = spacing * 0.12f, center = c, style = Stroke(width = spacing * 0.04f))
-        }
+    }
+}
+
+private fun hitOnBoard(
+    canvasWidth: Float,
+    canvasHeight: Float,
+    rect: BoardRect,
+    overlayImage: ImageBitmap?,
+    imageGrid: ImageGrid?,
+    x: Float,
+    y: Float,
+): Point? {
+    if (overlayImage != null) {
+        val overlay = overlayLayout(
+            canvasWidth = canvasWidth,
+            canvasHeight = canvasHeight,
+            imageWidth = overlayImage.width.toFloat(),
+            imageHeight = overlayImage.height.toFloat(),
+            imageGrid = imageGrid ?: ImageGrid(0f, 0f, 1f, 1f),
+            rect = rect,
+        )
+        return overlay.hit(x, y)
+    }
+    val pad = min(canvasWidth, canvasHeight) * 0.08f
+    val files = (rect.right - rect.left + 1)
+    val ranks = (rect.top - rect.bottom + 1)
+    val spacing = min((canvasWidth - pad * 2) / (files - 1).coerceAtLeast(1), (canvasHeight - pad * 2) / (ranks - 1).coerceAtLeast(1))
+    val origin = Offset(
+        x = (canvasWidth - spacing * (files - 1)) / 2f,
+        y = (canvasHeight - spacing * (ranks - 1)) / 2f,
+    )
+    return BoardGeom(spacing, origin, rect).hit(Offset(x, y))
+}
+
+private fun DrawScope.drawOverlayGrid(overlay: OverlayLayout, edges: Edges) {
+    val stroke = min(overlay.spacingX, overlay.spacingY) * 0.035f
+    val edgeStroke = min(overlay.spacingX, overlay.spacingY) * 0.07f
+    val ink = Color(0xCC3A2712)
+    for (file in overlay.rect.files) {
+        val a = overlay.center(Point(file, overlay.rect.bottom))
+        val b = overlay.center(Point(file, overlay.rect.top))
+        drawLine(ink, Offset(a.x, a.y), Offset(b.x, b.y), strokeWidth = stroke)
+    }
+    for (rank in overlay.rect.ranks) {
+        val a = overlay.center(Point(overlay.rect.left, rank))
+        val b = overlay.center(Point(overlay.rect.right, rank))
+        drawLine(ink, Offset(a.x, a.y), Offset(b.x, b.y), strokeWidth = stroke)
+    }
+    val tl = overlay.center(Point(overlay.rect.left, overlay.rect.top))
+    val tr = overlay.center(Point(overlay.rect.right, overlay.rect.top))
+    val bl = overlay.center(Point(overlay.rect.left, overlay.rect.bottom))
+    val br = overlay.center(Point(overlay.rect.right, overlay.rect.bottom))
+    if (edges.top == EdgeKind.Real) drawLine(ink, Offset(tl.x, tl.y), Offset(tr.x, tr.y), strokeWidth = edgeStroke)
+    if (edges.bottom == EdgeKind.Real) drawLine(ink, Offset(bl.x, bl.y), Offset(br.x, br.y), strokeWidth = edgeStroke)
+    if (edges.left == EdgeKind.Real) drawLine(ink, Offset(tl.x, tl.y), Offset(bl.x, bl.y), strokeWidth = edgeStroke)
+    if (edges.right == EdgeKind.Real) drawLine(ink, Offset(tr.x, tr.y), Offset(br.x, br.y), strokeWidth = edgeStroke)
+}
+
+private fun DrawScope.drawOverlayCoordinates(overlay: OverlayLayout, measurer: TextMeasurer) {
+    val spacing = min(overlay.spacingX, overlay.spacingY)
+    val style = TextStyle(color = Color(0xFF3A2712), fontSize = (spacing * 0.28f).sp)
+    for (file in overlay.rect.files) {
+        val p = overlay.center(Point(file, overlay.rect.bottom))
+        val label = Point.FILE_CHARS[file].toString()
+        val layout = measurer.measure(label, style)
+        drawText(layout, topLeft = Offset(p.x - layout.size.width / 2f, p.y + spacing * 0.28f))
+    }
+    for (rank in overlay.rect.ranks) {
+        val p = overlay.center(Point(overlay.rect.right, rank))
+        val label = rank.toString()
+        val layout = measurer.measure(label, style)
+        drawText(layout, topLeft = Offset(p.x + spacing * 0.28f, p.y - layout.size.height / 2f))
     }
 }
 

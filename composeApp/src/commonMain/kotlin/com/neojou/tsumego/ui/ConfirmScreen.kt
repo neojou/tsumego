@@ -82,6 +82,7 @@ fun ConfirmScreen(
             stones = draft.stones,
             targets = draft.targets,
             overlayImage = image,
+            imageGrid = draft.imageGrid,
             onClick = { point ->
                 onChange(if (targetMode) draft.toggleTarget(point) else draft.cycleStone(point))
             },

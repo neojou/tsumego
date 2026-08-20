@@ -16,6 +16,7 @@ data class ConfirmDraft(
     val stones: Map<Point, StoneColor>,
     val goal: Goal = Goal.Live,
     val targets: Set<Point> = emptySet(),
+    val imageGrid: ImageGrid? = null,
 ) {
     fun cycleStone(point: Point): ConfirmDraft {
         if (!rect.contains(point)) return this
@@ -66,17 +67,31 @@ object EmptyDiagramReader : DiagramReader {
         emptyDraft(image)
 }
 
-fun emptyDraft(image: ByteArray?): ConfirmDraft = ConfirmDraft(
-    imageBytes = image,
-    rect = BoardRect(left = 0, right = 18, bottom = 1, top = 19),
-    edges = Edges(
-        left = EdgeKind.Real,
-        right = EdgeKind.Real,
-        bottom = EdgeKind.Real,
-        top = EdgeKind.Real,
-    ),
-    stones = emptyMap(),
-)
+fun emptyDraft(image: ByteArray?): ConfirmDraft {
+    if (image != null) {
+        val layout = detectDiagramLayout(image)
+        if (layout != null) {
+            return ConfirmDraft(
+                imageBytes = image,
+                rect = layout.rect,
+                edges = layout.edges,
+                stones = emptyMap(),
+                imageGrid = layout.imageGrid,
+            )
+        }
+    }
+    return ConfirmDraft(
+        imageBytes = image,
+        rect = BoardRect(left = 0, right = 18, bottom = 1, top = 19),
+        edges = Edges(
+            left = EdgeKind.Real,
+            right = EdgeKind.Real,
+            bottom = EdgeKind.Real,
+            top = EdgeKind.Real,
+        ),
+        stones = emptyMap(),
+    )
+}
 
 fun readDiagram(reader: DiagramReader, image: ByteArray, diagramFirst: StoneColor): ConfirmDraft {
     val draft = reader.read(image, diagramFirst)
