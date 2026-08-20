@@ -99,14 +99,32 @@ private fun DropdownRootItem(
             onDismissRequest = { expanded = false },
         ) {
             item.children.forEach { child ->
-                DropdownMenuItem(
-                    text = { Text(child.label) },
-                    enabled = child.enabled,
-                    onClick = {
-                        expanded = false
-                        child.onClick?.invoke()
-                    },
-                )
+                if (child.children.isNotEmpty()) {
+                    DropdownMenuItem(
+                        text = { Text(child.label) },
+                        enabled = false,
+                        onClick = {},
+                    )
+                    child.children.forEach { grandchild ->
+                        DropdownMenuItem(
+                            text = { Text("  ${grandchild.label}") },
+                            enabled = grandchild.enabled,
+                            onClick = {
+                                expanded = false
+                                grandchild.onClick?.invoke()
+                            },
+                        )
+                    }
+                } else {
+                    DropdownMenuItem(
+                        text = { Text(child.label) },
+                        enabled = child.enabled,
+                        onClick = {
+                            expanded = false
+                            child.onClick?.invoke()
+                        },
+                    )
+                }
             }
         }
     }

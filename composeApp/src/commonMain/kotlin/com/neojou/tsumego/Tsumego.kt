@@ -3,21 +3,26 @@ package com.neojou.tsumego
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -28,37 +33,109 @@ import com.neojou.tools.LogLevel
 import com.neojou.tools.MyLog
 import com.neojou.tools.ui.menu.MyTopMenuBar
 import com.neojou.tools.ui.menu.MyTopMenuItem
+import com.neojou.tsumego.board.Problem
+import com.neojou.tsumego.board.StoneColor
+import com.neojou.tsumego.diagram.ConfirmDraft
+import com.neojou.tsumego.diagram.readDiagram
+import com.neojou.tsumego.io.openDiagramImage
+import com.neojou.tsumego.io.openProblemText
+import com.neojou.tsumego.io.platformDiagramReader
+import com.neojou.tsumego.io.saveProblemText
+import com.neojou.tsumego.library.ProblemLibrary
+import com.neojou.tsumego.library.ProblemLoad
+import com.neojou.tsumego.library.Samples
+import com.neojou.tsumego.play.PlayStatus
+import com.neojou.tsumego.play.Session
+import com.neojou.tsumego.ui.BoardView
+import com.neojou.tsumego.ui.ConfirmScreen
+import com.neojou.tsumego.ui.label
+import kotlinx.coroutines.launch
 
-/**
- * Log tag used by [Tsumego] for logging UI events.
- */
 private const val TAG = "Tsumego"
 
-/**
- * Main content modes for the shell area below the toolbar.
- */
-private enum class MainContent {
-    /** Default placeholder until a feature is chosen. */
-    Home,
-
-    /** Daily candlestick + volume chart (viewport pan/zoom). */
-    KChart,
-}
-
-/**
- * Primary application shell.
- *
- * Hosts a product-configured [MyTopMenuBar] and content area.
- * - Database → Input / View / Export / Import
- * - K Chart → View / Settings（均線 + KD + MACD 參數）
- */
 @Composable
 fun Tsumego() {
+    val scope = rememberCoroutineScope()
     var showAbout by remember { mutableStateOf(false) }
+    var session by remember { mutableStateOf<Session?>(null) }
+    var draft by remember { mutableStateOf<ConfirmDraft?>(null) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+    var currentProblem by remember { mutableStateOf<Problem?>(null) }
 
-    // Product-specific menu tree only; [MyTopMenuBar] stays app-agnostic.
-    // Rebuilt each composition so callbacks always see current shell state.
+    fun startProblem(problem: Problem) {
+        val err = problem.validationError()
+        if (err != null) {
+            errorMessage = err
+            return
+        }
+        currentProblem = problem
+        draft = null
+        session = Session(problem = problem, scope = scope)
+    }
+
     val topMenus = listOf(
+        MyTopMenuItem(
+            id = "input",
+            label = "Input",
+            children = listOf(
+                MyTopMenuItem(
+                    id = "black-first",
+                    label = "Black First",
+                    onClick = {
+                        scope.launch { openImport(StoneColor.Black) { d, err -> draft = d; errorMessage = err } }
+                    },
+                ),
+                MyTopMenuItem(
+                    id = "white-first",
+                    label = "White First",
+                    onClick = {
+                        scope.launch { openImport(StoneColor.White) { d, err -> draft = d; errorMessage = err } }
+                    },
+                ),
+            ),
+        ),
+        MyTopMenuItem(
+            id = "file",
+            label = "File",
+            children = listOf(
+                MyTopMenuItem(
+                    id = "open",
+                    label = "Open",
+                    onClick = {
+                        scope.launch {
+                            val text = openProblemText() ?: return@launch
+                            when (val loaded = ProblemLibrary.decode(text)) {
+                                is ProblemLoad.Ok -> startProblem(loaded.problem)
+                                is ProblemLoad.Err -> errorMessage = loaded.message
+                            }
+                        }
+                    },
+                ),
+                MyTopMenuItem(
+                    id = "save",
+                    label = "Save",
+                    enabled = currentProblem != null,
+                    onClick = {
+                        val problem = currentProblem ?: return@MyTopMenuItem
+                        scope.launch {
+                            val ok = saveProblemText("problem.tsumego.json", ProblemLibrary.encode(problem))
+                            if (!ok) errorMessage = "無法寫入題目檔"
+                        }
+                    },
+                ),
+                MyTopMenuItem(
+                    id = "samples",
+                    label = "Samples",
+                    children = Samples.all.map { sample ->
+                        MyTopMenuItem(
+                            id = sample.id,
+                            label = sample.name,
+                            onClick = { startProblem(sample.problem) },
+                        )
+                    },
+                ),
+            ),
+        ),
         MyTopMenuItem(
             id = "about",
             label = "About",
@@ -71,24 +148,76 @@ fun Tsumego() {
     }
 
     Scaffold(
-        topBar = {
-            MyTopMenuBar(items = topMenus)
-        },
+        topBar = { MyTopMenuBar(items = topMenus) },
     ) { innerPadding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text("tsumego")
+        Box(Modifier.fillMaxSize().padding(innerPadding)) {
+            val currentDraft = draft
+            val currentSession = session
+            when {
+                currentDraft != null -> ConfirmScreen(
+                    draft = currentDraft,
+                    onChange = { draft = it },
+                    onConfirm = {
+                        val problem = currentDraft.toProblem()
+                        val err = problem.validationError()
+                        if (err != null) errorMessage = err else startProblem(problem)
+                    },
+                    onCancel = { draft = null },
+                )
+                currentSession != null -> PlayScreen(currentSession)
+                else -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("請從 File → Samples 開題，或用 Input 匯入棋譜圖")
+                }
+            }
         }
     }
 
     if (showAbout) {
         AboutDialog(onDismiss = { showAbout = false })
     }
+    val message = errorMessage
+    if (message != null) {
+        MessageDialog(message = message, onDismiss = { errorMessage = null })
+    }
+}
 
+private suspend fun openImport(diagramFirst: StoneColor, done: (ConfirmDraft?, String?) -> Unit) {
+    val picked = openDiagramImage() ?: return
+    val draft = readDiagram(platformDiagramReader(), picked.bytes, diagramFirst)
+        .copy(imageBytes = picked.bytes)
+    done(draft, null)
+}
+
+@Composable
+private fun PlayScreen(session: Session) {
+    val snap by session.state.collectAsState()
+    val clickable = snap.status == PlayStatus.InProgress
+    Column(Modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(statusText(snap.status), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Text("題型：${snap.problem.goal.label()}", style = MaterialTheme.typography.bodyMedium)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(onClick = { session.pass() }, enabled = clickable) { Text("停") }
+            OutlinedButton(onClick = { session.undo() }, enabled = snap.canUndo) { Text("悔棋") }
+            OutlinedButton(onClick = { session.addTime() }, enabled = snap.canAddTime) { Text("加時") }
+        }
+        BoardView(
+            rect = snap.problem.rect,
+            edges = snap.problem.edges,
+            stones = snap.stones,
+            lastMove = snap.lastMove,
+            enabled = clickable,
+            onClick = { session.tryMove(it) },
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+        )
+    }
+}
+
+private fun statusText(status: PlayStatus): String = when (status) {
+    PlayStatus.InProgress -> "輪黑"
+    PlayStatus.WaitingForReply -> "思考中"
+    PlayStatus.Success -> "成功"
+    PlayStatus.Failure -> "失敗"
+    PlayStatus.Timeout -> "超時（未定）"
 }
 
 @Composable
@@ -98,44 +227,50 @@ private fun AboutDialog(onDismiss: () -> Unit) {
             shape = RoundedCornerShape(12.dp),
             color = MaterialTheme.colorScheme.surface,
             tonalElevation = 6.dp,
-            modifier = Modifier
-                .widthIn(max = 400.dp)
-                .fillMaxWidth(),
+            modifier = Modifier.widthIn(max = 400.dp).fillMaxWidth(),
         ) {
             Column(
                 modifier = Modifier.padding(20.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
+                Text("About", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                Text(AppVersion.APP_NAME, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
                 Text(
-                    text = "About",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Text(
-                    text = AppVersion.APP_NAME,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Medium,
-                )
-                Text(
-                    text = AppVersion.APP_NAME_EN,
+                    AppVersion.APP_NAME_EN,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f),
                 )
                 Text(
-                    text = "版本 ${AppVersion.DISPLAY}",
+                    "版本 ${AppVersion.DISPLAY}",
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary,
                 )
                 Text(
-                    text = AppVersion.SUMMARY,
+                    AppVersion.SUMMARY,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
                 )
-                TextButton(
-                    onClick = onDismiss,
-                    modifier = Modifier.align(Alignment.End),
-                ) {
+                TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.End)) {
+                    Text("關閉")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MessageDialog(message: String, onDismiss: () -> Unit) {
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 6.dp,
+            modifier = Modifier.widthIn(max = 420.dp).fillMaxWidth(),
+        ) {
+            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(message, style = MaterialTheme.typography.bodyLarge)
+                TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.End)) {
                     Text("關閉")
                 }
             }

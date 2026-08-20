@@ -16,7 +16,7 @@ fun main() {
         )
         Window(
             onCloseRequest = ::exitApplication,
-            title = "tsumego",
+            title = "詰碁",
             state = windowState,
         ) {
             App()

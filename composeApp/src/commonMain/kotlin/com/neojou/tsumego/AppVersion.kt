@@ -27,5 +27,5 @@ object AppVersion {
     const val DISPLAY: String = "v$NAME"
 
     /** One-line blurb for About. */
-    const val SUMMARY: String = "KMP 範本"
+    const val SUMMARY: String = "圍棋死活訓練機"
 }
