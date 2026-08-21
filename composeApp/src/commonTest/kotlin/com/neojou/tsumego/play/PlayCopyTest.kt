@@ -36,6 +36,14 @@ class PlayCopyTest {
     }
 
     @Test
+    fun emptyPlayHintNamesImportOpenAndSamples() {
+        assertEquals(
+            "請用 Import 匯入題目圖片，或 File → Open 打開題目檔，或直接選 File → Samples 下的例題開始玩",
+            emptyPlayHint(),
+        )
+    }
+
+    @Test
     fun thinkingSecondsFloorElapsedMillis() {
         assertEquals(0, thinkingSeconds(0))
         assertEquals(2, thinkingSeconds(2_999))

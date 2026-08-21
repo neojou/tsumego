@@ -5,7 +5,6 @@ import com.neojou.tsumego.board.Point
 import com.neojou.tsumego.board.Problem
 import com.neojou.tsumego.board.StoneColor
 import com.neojou.tsumego.board.lowerLeftCorner
-import com.neojou.tsumego.board.upperRightCorner
 
 data class SampleProblem(
     val id: String,
@@ -16,12 +15,19 @@ data class SampleProblem(
 object Samples {
     val liveCorner: Problem = liveCornerProblem()
     val smallKill: Problem = smallKillProblem()
-    val wallAndEdge: Problem = wallAndEdgeProblem()
+    val kill15K: Problem = loadKill(KILL_15K_JSON)
+    val kill13K: Problem = loadKill(KILL_13K_JSON)
 
     val all: List<SampleProblem> = listOf(
-        SampleProblem("small-kill", "小殺棋", smallKill),
-        SampleProblem("wall-and-edge", "牆與真盤邊", wallAndEdge),
+        SampleProblem("15k-kill", "15K 殺棋", kill15K),
+        SampleProblem("13k-kill", "13K 殺棋", kill13K),
     )
+
+    private fun loadKill(json: String): Problem {
+        val loaded = ProblemLibrary.decode(json)
+        check(loaded is ProblemLoad.Ok) { (loaded as ProblemLoad.Err).message }
+        return loaded.problem
+    }
 
     private fun liveCornerProblem(): Problem {
         val (rect, edges) = lowerLeftCorner(files = 5, ranks = 4)
@@ -49,16 +55,92 @@ object Samples {
         return Problem(rect, edges, stones, Goal.Kill, setOf(Point.parseOrThrow("B2")))
     }
 
-    private fun wallAndEdgeProblem(): Problem {
-        val (rect, edges) = upperRightCorner(files = 4, ranks = 4)
-        val stones = mapOf(
-            Point.parseOrThrow("Q18") to StoneColor.Black,
-            Point.parseOrThrow("R19") to StoneColor.Black,
-            Point.parseOrThrow("S18") to StoneColor.Black,
-            Point.parseOrThrow("R18") to StoneColor.White,
-        )
-        return Problem(rect, edges, stones, Goal.Kill, setOf(Point.parseOrThrow("R18")))
-    }
-
     private fun labels(vararg labels: String): List<Point> = labels.map { Point.parseOrThrow(it) }
 }
+
+private const val KILL_15K_JSON = """
+{
+    "format": "tsumego",
+    "version": 1,
+    "rect": {
+        "left": "P",
+        "right": "T",
+        "bottom": 15,
+        "top": 19
+    },
+    "edges": {
+        "left": "wall",
+        "right": "real",
+        "bottom": "wall",
+        "top": "real"
+    },
+    "stones": {
+        "Q16": "black",
+        "Q17": "black",
+        "Q18": "black",
+        "Q19": "black",
+        "R16": "black",
+        "R17": "white",
+        "R18": "white",
+        "R19": "white",
+        "S16": "black",
+        "S17": "white",
+        "T16": "black",
+        "T17": "white",
+        "T19": "white"
+    },
+    "goal": "kill",
+    "targets": [
+        "R17",
+        "R18",
+        "R19",
+        "S17",
+        "T17",
+        "T19"
+    ]
+}
+"""
+
+private const val KILL_13K_JSON = """
+{
+    "format": "tsumego",
+    "version": 1,
+    "rect": {
+        "left": "O",
+        "right": "T",
+        "bottom": 15,
+        "top": 19
+    },
+    "edges": {
+        "left": "wall",
+        "right": "real",
+        "bottom": "wall",
+        "top": "real"
+    },
+    "stones": {
+        "P16": "black",
+        "P17": "black",
+        "P18": "black",
+        "Q16": "black",
+        "Q17": "white",
+        "Q18": "white",
+        "R16": "black",
+        "R17": "white",
+        "S16": "black",
+        "S17": "white",
+        "S18": "white",
+        "T16": "black",
+        "T17": "black",
+        "T18": "white"
+    },
+    "goal": "kill",
+    "targets": [
+        "Q17",
+        "Q18",
+        "R17",
+        "S17",
+        "S18",
+        "T18"
+    ]
+}
+"""

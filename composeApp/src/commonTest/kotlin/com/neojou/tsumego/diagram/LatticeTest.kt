@@ -8,6 +8,49 @@ import kotlin.test.assertTrue
 
 class LatticeTest {
     @Test
+    fun latticeSpacingTakesTheSmallGapThatDividesTheOccludedSpan() {
+        assertEquals(192f, latticeSpacing(listOf(572f, 192f)), 1f)
+    }
+
+    @Test
+    fun latticeSpacingDoesNotTreatALabelMarginAsTheStep() {
+        assertEquals(130f, latticeSpacing(listOf(132f, 130f, 257f, 131f, 60f)), 2f)
+    }
+
+    @Test
+    fun completeLatticeDropsTwoLeftoverPeaksPastTheRealEdge() {
+        val lines = completeLattice(listOf(62f, 182f, 300f, 536f, 656f, 711f, 772f))
+        assertEquals(6, lines.size)
+        assertEquals(62f, lines.first(), 1f)
+        assertEquals(656f, lines.last(), 8f)
+    }
+
+    @Test
+    fun completeLatticeFillsFilesWhenInnerLinesAreOccluded() {
+        // 15K-kill.png vertical peaks: P and S visible, Q/R under stones, T at 824.
+        val lines = completeLattice(listOf(60f, 632f, 824f))
+        assertEquals(5, lines.size)
+        assertEquals(60f, lines.first(), 1f)
+        assertEquals(824f, lines.last(), 8f)
+        val gaps = lines.zipWithNext { a, b -> b - a }
+        gaps.forEach { gap ->
+            assertEquals(191.0, gap.toDouble(), 12.0)
+        }
+    }
+
+    @Test
+    fun squareLatticeUsesTheReliableAxisToFillTheOccludedOne() {
+        val (xs, ys) = completeSquareLattice(
+            rawX = listOf(60f, 632f, 824f),
+            rawY = listOf(36f, 225f, 415f, 987f),
+        )
+        assertEquals(5, xs.size)
+        assertTrue(ys.size >= 5)
+        assertEquals(60f, xs.first(), 1f)
+        assertEquals(824f, xs.last(), 8f)
+    }
+
+    @Test
     fun completeLatticeFillsASkippedFileCoveredByStones() {
         // Vertical lines measured on small_trick.png: Q is hidden under three white stones,
         // and a leftover peak sits past T on the label margin.

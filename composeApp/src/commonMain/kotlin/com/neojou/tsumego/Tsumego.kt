@@ -57,6 +57,7 @@ import com.neojou.tsumego.library.Samples
 import com.neojou.tsumego.play.PlayStatus
 import com.neojou.tsumego.play.Session
 import com.neojou.tsumego.play.numberedSearchPaths
+import com.neojou.tsumego.play.emptyPlayHint
 import com.neojou.tsumego.play.playHeading
 import com.neojou.tsumego.play.redoLabel
 import com.neojou.tsumego.play.searchPathCountLabel
@@ -151,7 +152,7 @@ fun Tsumego() {
                 )
                 currentSession != null -> PlayScreen(currentSession)
                 else -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("請用 Input 匯入棋譜圖，或 File → Open 打開題目檔")
+                    Text(emptyPlayHint())
                 }
             }
         }

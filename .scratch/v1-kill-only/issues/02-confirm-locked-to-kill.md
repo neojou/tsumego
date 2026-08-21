@@ -1,6 +1,6 @@
 # 02: 確認畫面與 Edit 鎖定殺棋
 
-**What to build:** 出題者從 Input 或 Edit 進確認畫面時不能選題型，一律殺棋。目標必須是白才能確認。White First 翻色後仍是殺棋、標題將是黑先殺白；目標交叉點不變。拿做活譜進來只要改標白目標即可存成殺棋；目標是黑則不能確認。
+**What to build:** 出題者從 Import 或 Edit 進確認畫面時不能選題型，一律殺棋。目標必須是白才能確認。White First 翻色後仍是殺棋、標題將是黑先殺白；目標交叉點不變。拿做活譜進來只要改標白目標即可存成殺棋；目標是黑則不能確認。
 
 **Blocked by:** None (can start immediately)
 

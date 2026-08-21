@@ -4,19 +4,20 @@ import com.neojou.tsumego.board.BoardRect
 import com.neojou.tsumego.board.EdgeKind
 import com.neojou.tsumego.board.Edges
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
-fun completeLattice(peaks: List<Float>): List<Float> {
+fun completeLattice(peaks: List<Float>, spacingHint: Float? = null): List<Float> {
     val sorted = peaks.distinct().sorted()
     if (sorted.size < 2) return sorted
     val gaps = sorted.zipWithNext { a, b -> b - a }.sorted()
-    val medianGap = gaps[gaps.size / 2]
-    val typical = gaps.filter { it >= medianGap * 0.7f && it <= medianGap * 1.3f }
-    val spacing = if (typical.isEmpty()) medianGap else typical[typical.size / 2]
+    val spacing = spacingHint?.takeIf { it > 1f } ?: latticeSpacing(gaps)
     if (spacing <= 1f) return sorted
 
-    var end = sorted.last()
-    if (sorted.size >= 2 && end - sorted[sorted.lastIndex - 1] < spacing * 0.7f) {
-        end = sorted[sorted.lastIndex - 1]
+    var lastIndex = sorted.lastIndex
+    var end = sorted[lastIndex]
+    while (lastIndex >= 1 && end - sorted[lastIndex - 1] < spacing * 0.7f) {
+        lastIndex--
+        end = sorted[lastIndex]
     }
 
     val lines = ArrayList<Float>()
@@ -32,6 +33,39 @@ fun completeLattice(peaks: List<Float>): List<Float> {
         if (lines.size >= 19) break
     }
     return lines
+}
+
+internal fun completeSquareLattice(
+    rawX: List<Float>,
+    rawY: List<Float>,
+): Pair<List<Float>, List<Float>> {
+    var xs = completeLattice(rawX)
+    var ys = completeLattice(rawY)
+    if (xs.size >= 2 && ys.size >= 2) {
+        val spacingX = xs.zipWithNext { a, b -> b - a }.average().toFloat()
+        val spacingY = ys.zipWithNext { a, b -> b - a }.average().toFloat()
+        if (spacingX > spacingY * 1.35f) xs = completeLattice(rawX, spacingY)
+        if (spacingY > spacingX * 1.35f) ys = completeLattice(rawY, spacingX)
+    }
+    return xs to ys
+}
+
+internal fun latticeSpacing(gaps: List<Float>): Float {
+    val sorted = gaps.sorted()
+    if (sorted.isEmpty()) return 1f
+    val medianGap = sorted[sorted.size / 2]
+    val typical = sorted.filter { it >= medianGap * 0.7f && it <= medianGap * 1.3f }
+    // Two inliers: real step. One large occluded span: take the small gap that divides it.
+    if (typical.size >= 2) return typical[typical.size / 2]
+    for (candidate in sorted) {
+        if (candidate <= 1f) continue
+        val fits = sorted.all { gap ->
+            val n = (gap / candidate).roundToInt().coerceAtLeast(1)
+            abs(gap - n * candidate) <= candidate * 0.15f
+        }
+        if (fits) return candidate
+    }
+    return if (typical.isEmpty()) medianGap else typical.single()
 }
 
 fun chooseLattices(

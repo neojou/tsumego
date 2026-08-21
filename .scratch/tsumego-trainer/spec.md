@@ -52,14 +52,14 @@ Glossary：`CONTEXT.md`。契約：`docs/adr/0001`–`0024`（`0006` 已被 `001
 36. As a 解題者, I want 題目盤右側列出已走完的搜尋路徑（編號從 1、可捲動）, so that 我知道算過哪些變化。
 37. As a 解題者, I want 思考中仍看得到盤面與新出現的搜尋路徑, so that 畫面不會假死。
 38. As a 解題者, I want 搜尋中可以悔棋, so that 不必等算完才能回頭。
-41. As an 出題者, I want TopMenu 有 Input → Black First / White First, so that 我能宣告棋譜圖上誰先走。
+41. As an 出題者, I want TopMenu 有 Import → Black First / White First, so that 我能宣告棋譜圖上誰先走。
 42. As an 出題者, I want 選 White First 時先翻色再進確認畫面, so that 存檔永遠是黑先。
 43. As an 出題者, I want 翻色後題型不變、目標棋串仍是同一批交叉點, so that 白先殺棋變成黑先殺棋而不是目標丟了。
 44. As an 出題者, I want 選棋譜圖後進入確認畫面, so that 認圖結果可以被改正才存檔。
 45. As an 出題者, I want 確認畫面上原圖當底, so that 我可以對圖擺子。
 46. As an 出題者, I want 在 Desktop 上自動認圖預填子, so that 對齊的平面圖不必從頭擺。
 47. As an 出題者, I want 認圖失敗時仍留在確認畫面並從空盤對圖擺, so that 稍差的圖不會整張作廢。
-48. As an 出題者, I want 在 Wasm 上走同一條 Input 流程、從空盤對圖擺子, so that 瀏覽器也能匯入圖，只是沒有自動填子。
+48. As an 出題者, I want 在 Wasm 上走同一條 Import 流程、從空盤對圖擺子, so that 瀏覽器也能匯入圖，只是沒有自動填子。
 49. As an 出題者, I want 點交叉點在空／黑／白之間循環, so that 我能改認錯的子。
 50. As an 出題者, I want 用「標目標」模式點一子就擴到整串、也可一顆顆取消, so that 標目標棋串不痛苦。
 51. As an 出題者, I want 四邊各切成真盤邊或牆, so that 角題兩邊真盤邊、兩邊牆。
@@ -73,7 +73,7 @@ Glossary：`CONTEXT.md`。契約：`docs/adr/0001`–`0024`（`0006` 已被 `001
 59. As an 出題者, I want 題目檔含盤矩形、四邊、子、題型、目標棋串且輪次永遠黑先, so that 檔案裡沒有預錄變化、沒有原始誰先走。
 60. As an 出題者, I want 非法題目檔被拒絕並說明, so that 壞檔不會當成可解的題。
 61. As a 解題者, I want About 顯示產品名「詰碁」與版本, so that 我知道這不是 K 線圖殼。
-62. As a 解題者, I want Wasm 也看得到 Input 與 File, so that 兩個優先平台選單一致。
+62. As a 解題者, I want Wasm 也看得到 Import 與 File, so that 兩個優先平台選單一致。
 63. As a 解題者, I want 牆外與矩形外不能落子, so that 裁切小盤的世界是封閉的。
 64. As a 解題者, I want 目標子被提淨時視為無條件死, so that 殺棋在子進碗後立刻可成功。
 65. As a 解題者, I want Benson 活視為無條件活, so that 假眼與彎三這類不被眼形表誤殺。
@@ -101,7 +101,7 @@ Glossary：`CONTEXT.md`。契約：`docs/adr/0001`–`0024`（`0006` 已被 `001
 - **題目庫** 介面：題目 ↔ `.tsumego.json` 文字（kotlinx.serialization）。欄位：矩形座標範圍、四邊各為真盤邊或牆、交叉點上的黑／白子、題型、目標棋串的交叉點集合。存檔後輪次永遠黑先。不含解答樹、不含原始誰先走、不含原圖（原圖若保留，只當確認畫面的附檔，不是判定所需）。非法 JSON 或欄位不合法（例如雙活題只有一色目標）拒絕載入。v1 題型必須是殺棋，否則拒絕（ADR-0024）。
 - **認圖** 介面：棋譜圖 + 黑先或白先 → 確認畫面草稿（子、建議矩形與四邊；目標棋串仍由人在確認畫面補，v1 題型固定殺棋）。兩個 adapter：Desktop 自動填子；Wasm 與認圖失敗為空盤 + 原圖當底。白先在進確認畫面之前翻色。認圖不在 commonMain。
 - **確認畫面** 是殼的一部分：循環改子、標目標（點一下擴整串）、切四邊、確認才交給題目庫。v1 不選題型，一律殺棋；目標必須是白（ADR-0024）。目標子在盤上套紅框，左邊列出「目標: A1, B2, …」。真盤邊畫粗黑線；牆是切口，不畫粗黑線（虛線）。
-- TopMenu：**Input**（Black First、White First）、**File**（Open、Save、Samples）、**Edit**、**About**。Input 走棋譜圖；File 走題目檔（ADR-0018）。v1 Samples 只列殺棋。Edit 把目前題目送回確認畫面（改子、標目標棋串、四邊）；確認後重新開題；取消回到對局。
+- TopMenu：**Import**（Black First、White First）、**File**（Open、Save、Samples）、**Edit**、**About**。Import 走棋譜圖；File 走題目檔（ADR-0018）。空畫面提示用 Import 匯入題目圖片、File → Open 打開題目檔、或 File → Samples 的例題。v1 Samples 列「15K 殺棋」再「13K 殺棋」。Edit 把目前題目送回確認畫面（改子、標目標棋串、四邊）；確認後重新開題；取消回到對局。
 - 搜尋不設時限。每條走到終局的搜尋路徑列在題目盤右側、從 1 編號、可捲動（ADR-0019）。殼顯示實際搜尋路徑條數；列表可截取。路徑不列白停／黑停；解題搜尋不把停當候選。證明用相關區剪區外落子空手／必應區（ADR-0023）。成功或失敗後可重做，盤面回到題目開始、路徑先不顯示；同一局面再下同一手重用搜尋並顯示。File → Open 記住上次目錄（ADR-0021）。殼左上為「黑先殺白」這類標題、輪黑請落子／輪白思考時間。路徑搜完顯示「從路徑中思考最強應手...」。牆邊若貼著子，題目盤再空兩路（ADR-0020）。座標標號必須畫在畫布內。
 - v1 棋盤：Compose Canvas 程式畫木紋、徑向漸層、高光、落影；不是真 3D 場景、不是預先畫好的棋子貼圖。
 - 平台：commonMain 行為 Desktop 與 Wasm 一致。Android／iOS 不在本 spec 實作，但不要為它們預先開解題 adapter。
@@ -132,5 +132,5 @@ Glossary：`CONTEXT.md`。契約：`docs/adr/0001`–`0024`（`0006` 已被 `001
 ## Further Notes
 
 - 實作順序建議：題目盤＋規則 → 題目庫 JSON → 分類（提淨／Benson／停後死；雙活與劫次之）→ 對局＋解題搜尋 → 殼（盤面繪製、選單、確認畫面）→ Desktop 認圖 adapter。
-- 內建樣例 v1 只列殺棋（小殺棋、牆與真盤邊）。角上做活留作測試夾具，不進 File → Samples。五種題型仍要有對局測試夾具。
+- 內建樣例 v1 列「15K 殺棋」再「13K 殺棋」（`docs/15K-kill.tsumego.json`、`docs/13K-kill.tsumego.json`）。小殺棋與角上做活留作測試夾具，不進 File → Samples。五種題型仍要有對局測試夾具。
 - 若實作時發現分類器在「停後剩餘當死」、做不成活則死、與劫的两次假設互相搶答，以 ADR-0014 的順序為準，不要在對話裡另開例外。

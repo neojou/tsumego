@@ -39,8 +39,10 @@ fun detectDiagramLayout(bytes: ByteArray): DiagramLayout? = runCatching {
         return 0.299f * r + 0.587f * g + 0.114f * b
     }
 
-    val xs = completeLattice(linePeaks(width, height, vertical = true, lum = ::lum))
-    val ys = completeLattice(linePeaks(width, height, vertical = false, lum = ::lum))
+    val (xs, ys) = completeSquareLattice(
+        linePeaks(width, height, vertical = true, lum = ::lum),
+        linePeaks(width, height, vertical = false, lum = ::lum),
+    )
     if (xs.size < 2 || ys.size < 2) return@runCatching null
     val (chosenX, chosenY) = chooseLattices(xs, ys, width, height) { x, y ->
         val xi = x.toInt().coerceIn(1, width - 2)

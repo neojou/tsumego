@@ -125,9 +125,42 @@ class ProblemJsonTest {
 
     @Test
     fun listedSamplesAreKillOnly() {
+        assertEquals(listOf("15K 殺棋", "13K 殺棋"), Samples.all.map { it.name })
         assertTrue(Samples.all.none { "做活" in it.name })
+        assertTrue(Samples.all.none { it.name == "小殺棋" })
+        assertTrue(Samples.all.none { it.name == "牆與真盤邊" })
         assertTrue(Samples.all.all { it.problem.goal == Goal.Kill })
-        assertTrue(Samples.all.any { it.name == "小殺棋" })
+        assertTrue(Samples.all.all { it.problem.goal.playHeading() == "黑先殺白" })
+    }
+
+    @Test
+    fun listedSampleIsThe15KKillProblem() {
+        val sample = Samples.all.first { it.name == "15K 殺棋" }.problem
+        assertEquals(Point.fileIndex('P'), sample.rect.left)
+        assertEquals(Point.fileIndex('T'), sample.rect.right)
+        assertEquals(15, sample.rect.bottom)
+        assertEquals(19, sample.rect.top)
+        assertEquals(StoneColor.Black, sample.stones[pt("Q19")])
+        assertEquals(StoneColor.White, sample.stones[pt("T19")])
+        assertEquals(StoneColor.Black, sample.stones[pt("T16")])
+        assertTrue(pt("T19") in sample.targets)
+        assertTrue(pt("R17") in sample.targets)
+        assertTrue(pt("Q19") !in sample.targets)
+    }
+
+    @Test
+    fun listedSampleIsThe13KKillProblem() {
+        val sample = Samples.all.first { it.name == "13K 殺棋" }.problem
+        assertEquals(Point.fileIndex('O'), sample.rect.left)
+        assertEquals(Point.fileIndex('T'), sample.rect.right)
+        assertEquals(15, sample.rect.bottom)
+        assertEquals(19, sample.rect.top)
+        assertEquals(StoneColor.White, sample.stones[pt("T18")])
+        assertEquals(StoneColor.Black, sample.stones[pt("T16")])
+        assertEquals(StoneColor.White, sample.stones[pt("Q17")])
+        assertTrue(pt("T18") in sample.targets)
+        assertTrue(pt("Q17") in sample.targets)
+        assertTrue(pt("T16") !in sample.targets)
     }
 
     @Test

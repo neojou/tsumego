@@ -25,8 +25,8 @@ fun shellMenuBarItems(
     sampleItems: List<MyTopMenuItem> = emptyList(),
 ): List<MyTopMenuItem> = listOf(
     MyTopMenuItem(
-        id = "input",
-        label = "Input",
+        id = "import",
+        label = "Import",
         children = listOf(
             MyTopMenuItem(id = "black-first", label = "Black First", onClick = onBlackFirst),
             MyTopMenuItem(id = "white-first", label = "White First", onClick = onWhiteFirst),

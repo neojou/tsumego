@@ -1,0 +1,41 @@
+{
+    "format": "tsumego",
+    "version": 1,
+    "rect": {
+        "left": "O",
+        "right": "T",
+        "bottom": 15,
+        "top": 19
+    },
+    "edges": {
+        "left": "wall",
+        "right": "real",
+        "bottom": "wall",
+        "top": "real"
+    },
+    "stones": {
+        "P16": "black",
+        "P17": "black",
+        "P18": "black",
+        "Q16": "black",
+        "Q17": "white",
+        "Q18": "white",
+        "R16": "black",
+        "R17": "white",
+        "S16": "black",
+        "S17": "white",
+        "S18": "white",
+        "T16": "black",
+        "T17": "black",
+        "T18": "white"
+    },
+    "goal": "kill",
+    "targets": [
+        "Q17",
+        "Q18",
+        "R17",
+        "S17",
+        "S18",
+        "T18"
+    ]
+}

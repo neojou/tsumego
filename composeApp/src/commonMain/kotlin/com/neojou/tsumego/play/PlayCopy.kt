@@ -20,3 +20,6 @@ fun searchPathCountLabel(displayed: Int, total: Int): String =
     else "搜尋路徑數目： $total（列出 $displayed）"
 
 fun redoLabel(): String = "重做"
+
+fun emptyPlayHint(): String =
+    "請用 Import 匯入題目圖片，或 File → Open 打開題目檔，或直接選 File → Samples 下的例題開始玩"
