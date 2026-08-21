@@ -17,10 +17,12 @@ object Samples {
     val smallKill: Problem = smallKillProblem()
     val kill15K: Problem = loadKill(KILL_15K_JSON)
     val kill13K: Problem = loadKill(KILL_13K_JSON)
+    val kill8K: Problem = loadKill(KILL_8K_JSON)
 
     val all: List<SampleProblem> = listOf(
         SampleProblem("15k-kill", "15K 殺棋", kill15K),
         SampleProblem("13k-kill", "13K 殺棋", kill13K),
+        SampleProblem("8k-kill", "8K 殺棋", kill8K),
     )
 
     private fun loadKill(json: String): Problem {
@@ -141,6 +143,50 @@ private const val KILL_13K_JSON = """
         "S17",
         "S18",
         "T18"
+    ]
+}
+"""
+
+private const val KILL_8K_JSON = """
+{
+    "format": "tsumego",
+    "version": 1,
+    "rect": {
+        "left": "P",
+        "right": "T",
+        "bottom": 14,
+        "top": 19
+    },
+    "edges": {
+        "left": "wall",
+        "right": "real",
+        "bottom": "wall",
+        "top": "real"
+    },
+    "stones": {
+        "Q15": "black",
+        "Q16": "black",
+        "Q17": "black",
+        "Q18": "black",
+        "Q19": "black",
+        "R15": "black",
+        "R16": "white",
+        "R17": "white",
+        "R18": "white",
+        "R19": "white",
+        "S15": "black",
+        "S16": "white",
+        "T15": "black",
+        "T16": "white"
+    },
+    "goal": "kill",
+    "targets": [
+        "R16",
+        "R17",
+        "R18",
+        "R19",
+        "S16",
+        "T16"
     ]
 }
 """
