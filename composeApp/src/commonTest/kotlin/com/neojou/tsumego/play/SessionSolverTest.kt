@@ -11,6 +11,7 @@ import com.neojou.tsumego.solve.AlphaBetaSolver
 import com.neojou.tsumego.solve.Solver
 import com.neojou.tsumego.solve.SolverInput
 import com.neojou.tsumego.solve.SolverResult
+import com.neojou.tsumego.solve.isTenuki
 import com.neojou.tsumego.testSession
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.test.runTest
@@ -118,6 +119,41 @@ class SessionSolverTest {
         assertEquals(listOf("白下 B3 -> 黑下 A3 -> 結果 成功"), waiting.searchPaths)
         finish.complete(Unit)
         session.waitForIdle()
+    }
+
+    @Test
+    fun r12IsATenukiFromTheUpperRightFight() {
+        val targets = setOf(pt("R17"), pt("R18"), pt("S16"), pt("T18"))
+        assertTrue(isTenuki(pt("R12"), targets))
+        assertTrue(isTenuki(pt("O13"), targets))
+        assertTrue(!isTenuki(pt("S19"), targets))
+    }
+
+    @Test
+    fun searchPathCountIsTheRealTotalPastTheDisplayedCap() = runTest {
+        val solver = object : Solver {
+            override suspend fun solve(input: SolverInput): SolverResult {
+                repeat(1005) { i ->
+                    input.onPath("白下 A1 -> 結果 失敗 #$i")
+                }
+                input.onPathsComplete()
+                return SolverResult.Resist(Action.Pass)
+            }
+        }
+        val session = testSession(
+            cornerProblem(
+                black = "A2,B1,C2",
+                white = "B2",
+                goal = Goal.Kill,
+                targets = "B2",
+            ),
+            solver = solver,
+        )
+        assertTrue(session.tryMove(pt("A1")))
+        session.waitForIdle()
+        val snap = session.state.value
+        assertEquals(1005, snap.searchPathCount)
+        assertEquals(1000, snap.searchPaths.size)
     }
 
     @Test

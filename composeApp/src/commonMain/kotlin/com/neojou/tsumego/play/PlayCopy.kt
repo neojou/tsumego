@@ -14,3 +14,7 @@ fun numberedSearchPaths(paths: List<String>): List<String> =
     paths.mapIndexed { index, line -> "${index + 1}. $line" }
 
 fun thinkingSeconds(elapsedMs: Long): Long = (elapsedMs / 1000L).coerceAtLeast(0L)
+
+fun searchPathCountLabel(displayed: Int, total: Int): String =
+    if (total <= displayed) "搜尋路徑數目： $total"
+    else "搜尋路徑數目： $total（列出 $displayed）"

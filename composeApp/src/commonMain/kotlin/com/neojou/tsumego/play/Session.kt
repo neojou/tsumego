@@ -40,6 +40,7 @@ data class PlaySnapshot(
     val lastMoveIsPass: Boolean,
     val canUndo: Boolean,
     val searchPaths: List<String> = emptyList(),
+    val searchPathCount: Int = 0,
     val pickingReply: Boolean = false,
 )
 
@@ -129,6 +130,7 @@ class Session(
         )
         val frozenPosition = position
         val frozenPasses = consecutivePasses
+        val frozenBlack = (history.lastOrNull()?.black as? Action.Move)?.point
         searchJob = scope.launch {
             val result = withContext(searchDispatcher) {
                 solver.solve(
@@ -139,13 +141,19 @@ class Session(
                         budget = UnlimitedBudget,
                         onPath = { line ->
                             _state.update { old ->
-                                if (old.searchPaths.size >= 1000 || line in old.searchPaths) old
-                                else old.copy(searchPaths = old.searchPaths + line)
+                                val paths =
+                                    if (old.searchPaths.size >= DISPLAYED_SEARCH_PATHS || line in old.searchPaths) {
+                                        old.searchPaths
+                                    } else {
+                                        old.searchPaths + line
+                                    }
+                                old.copy(searchPaths = paths, searchPathCount = old.searchPathCount + 1)
                             }
                         },
                         onPathsComplete = {
                             _state.update { it.copy(pickingReply = true) }
                         },
+                        lastBlack = frozenBlack,
                     ),
                 )
             }
@@ -195,6 +203,7 @@ class Session(
                 lastMove,
                 lastMoveIsPass,
                 if (clearPaths) emptyList() else old.searchPaths,
+                searchPathCount = if (clearPaths) 0 else old.searchPathCount,
                 pickingReply = if (clearPaths || status != PlayStatus.WaitingForReply) false else old.pickingReply,
             )
         }
@@ -205,6 +214,7 @@ class Session(
         lastMove: Point?,
         lastMoveIsPass: Boolean,
         searchPaths: List<String> = emptyList(),
+        searchPathCount: Int = 0,
         pickingReply: Boolean = false,
     ) = PlaySnapshot(
         problem = problem,
@@ -219,8 +229,13 @@ class Session(
         lastMoveIsPass = lastMoveIsPass,
         canUndo = history.isNotEmpty(),
         searchPaths = searchPaths,
+        searchPathCount = searchPathCount,
         pickingReply = pickingReply,
     )
 
     private fun lastPoint(action: Action?): Point? = (action as? Action.Move)?.point
+
+    companion object {
+        const val DISPLAYED_SEARCH_PATHS = 1000
+    }
 }

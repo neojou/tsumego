@@ -41,6 +41,7 @@ data class SolverInput(
     val budget: Budget,
     val onPath: (String) -> Unit = {},
     val onPathsComplete: () -> Unit = {},
+    val lastBlack: Point? = null,
 )
 
 fun interface Solver {
@@ -59,6 +60,9 @@ class AlphaBetaSolver(
 ) : Solver {
     override suspend fun solve(input: SolverInput): SolverResult {
         val search = Search(input.problem, input.budget, input.onPath)
+        if (input.lastBlack != null && isTenuki(input.lastBlack, input.problem.targets)) {
+            tenukiRefute(input, search)?.let { return it }
+        }
         var proven: Force? = null
         var provenDepth = 0
         for (depth in 1..maxDepth) {
@@ -95,6 +99,23 @@ class AlphaBetaSolver(
     }
 }
 
+private suspend fun tenukiRefute(input: SolverInput, search: Search): SolverResult? {
+    val moves = actions(input.position, StoneColor.White, input.problem)
+    for (depth in 1..8) {
+        if (input.budget.expired()) return SolverResult.Timeout
+        for (action in moves) {
+            val next = applyAction(input.position, action, StoneColor.White, input.consecutivePasses) ?: continue
+            val child = search.canForce(next.first, StoneColor.Black, next.second, depth, listOf(action))
+            if (child is Force.TimedOut) return SolverResult.Timeout
+            if (child is Force.No) {
+                input.onPathsComplete()
+                return SolverResult.Refute(action)
+            }
+        }
+    }
+    return null
+}
+
 private class Search(
     private val problem: Problem,
     private val budget: Budget,
@@ -106,7 +127,7 @@ private class Search(
 
     suspend fun pickResist(input: SolverInput, proveDepth: Int): SolverResult {
         val scored = ArrayList<Triple<Action, Int, Int>>()
-        for (action in actions(input.position, StoneColor.White, problem.targets)) {
+        for (action in actions(input.position, StoneColor.White, problem)) {
             if (budget.expired()) return SolverResult.Timeout
             val next = applyAction(input.position, action, StoneColor.White, input.consecutivePasses) ?: continue
             var found: Force.Yes? = null
@@ -136,7 +157,7 @@ private class Search(
 
     suspend fun pickRefute(input: SolverInput, proveDepth: Int): SolverResult {
         val preventing = ArrayList<Action>()
-        for (action in actions(input.position, StoneColor.White, problem.targets)) {
+        for (action in actions(input.position, StoneColor.White, problem)) {
             if (budget.expired()) return SolverResult.Timeout
             val next = applyAction(input.position, action, StoneColor.White, input.consecutivePasses) ?: continue
             var child: Force = Force.Unknown
@@ -186,7 +207,7 @@ private class Search(
         proven[key]?.let { return it }
         if (depth <= 0) return Force.Unknown
 
-        val moves = actions(position, toPlay, problem.targets)
+        val moves = actions(position, toPlay, problem)
         val result = if (toPlay == StoneColor.Black) {
             orMoves(position, passes, depth, moves, path)
         } else {
@@ -274,7 +295,8 @@ private class Search(
     }
 }
 
-internal fun actions(position: Position, toPlay: StoneColor, targets: Set<Point>): List<Action> {
+internal fun actions(position: Position, toPlay: StoneColor, problem: Problem): List<Action> {
+    val targets = problem.targets
     val region = relevantEmptyPoints(position, targets)
     val pool = if (region.isEmpty()) position.playable else region
     val libertyFirst = HashSet<Point>()
@@ -285,12 +307,43 @@ internal fun actions(position: Position, toPlay: StoneColor, targets: Set<Point>
         seen.addAll(string)
         libertyFirst.addAll(position.liberties(string))
     }
-    val legal = pool.filter { position.play(it, toPlay) != null }.ifEmpty { position.legalMoves(toPlay) }
+    val saving = if (toPlay == StoneColor.White) immediateRefutations(position, problem, pool) else emptySet()
+    val clamps = region - libertyFirst
+    val legal = (pool + saving).distinct().filter { position.play(it, toPlay) != null }
+        .ifEmpty { position.legalMoves(toPlay) }
     val ordered = legal.sortedWith(
-        compareByDescending<Point> { if (isCapture(position, it, toPlay)) 2 else if (it in libertyFirst) 1 else 0 }
-            .thenBy { it },
+        compareByDescending<Point> {
+            when {
+                it in saving -> 4
+                isCapture(position, it, toPlay) -> 3
+                it in clamps -> 2
+                it in libertyFirst -> 1
+                else -> 0
+            }
+        }.thenBy { it },
     )
     return ordered.map { Action.Move(it) } + Action.Pass
+}
+
+internal fun isTenuki(point: Point, targets: Set<Point>, minDistance: Int = 3): Boolean {
+    if (targets.isEmpty()) return false
+    return targets.all { target ->
+        maxOf(kotlin.math.abs(point.file - target.file), kotlin.math.abs(point.rank - target.rank)) >= minDistance
+    }
+}
+
+internal fun immediateRefutations(
+    position: Position,
+    problem: Problem,
+    candidates: Collection<Point>,
+): Set<Point> {
+    val out = LinkedHashSet<Point>()
+    for (point in candidates) {
+        val next = position.play(point, StoneColor.White) ?: continue
+        val outcome = classify(next, problem.targets, bothPassed = false)
+        if (outcome != Outcome.Unsettled && !problem.goal.isSuccess(outcome)) out.add(point)
+    }
+    return out
 }
 
 private fun isCapture(position: Position, point: Point, toPlay: StoneColor): Boolean {

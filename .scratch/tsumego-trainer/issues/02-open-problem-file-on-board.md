@@ -15,4 +15,4 @@
 
 ## Answer
 
-File → Open / Save round-trips `.tsumego.json`. The 題目盤 is the cropped rectangle with 真盤邊 vs 牆, A–T skip I coordinates, and Canvas stones. 牆邊若有子，再開時再空兩路（ADR-0020）。座標標號留在畫布內。Illegal files are rejected with a message. File → Samples was dropped at the user's request.
+File → Open / Save round-trips `.tsumego.json`. The 題目盤 is the cropped rectangle with 真盤邊 vs 牆, A–T skip I coordinates, and Canvas stones. 牆邊若有子，再開時再空兩路（ADR-0020）。座標標號留在畫布內。Desktop 記住上次開／存的目錄。Illegal files are rejected with a message. File → Samples was dropped at the user's request.

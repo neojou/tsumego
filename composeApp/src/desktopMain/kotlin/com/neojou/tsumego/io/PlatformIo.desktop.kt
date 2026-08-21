@@ -47,12 +47,18 @@ private suspend fun <T> withChooser(
 ): T? = suspendCancellableCoroutine { cont ->
     SwingUtilities.invokeLater {
         try {
+            val memory = platformDirectoryMemory()
+            val lastDir = memory.lastDirectory()?.let { File(it) }?.takeIf { it.isDirectory }
             val chooser = JFileChooser().apply {
                 fileFilter = filter
-                if (suggested != null) selectedFile = File(suggested)
+                if (lastDir != null) currentDirectory = lastDir
+                if (suggested != null) {
+                    selectedFile = if (lastDir != null) File(lastDir, File(suggested).name) else File(suggested)
+                }
             }
             val code = if (save) chooser.showSaveDialog(null) else chooser.showOpenDialog(null)
             if (code == JFileChooser.APPROVE_OPTION) {
+                memory.rememberFile(chooser.selectedFile.absolutePath)
                 cont.resume(read(chooser.selectedFile))
             } else {
                 cont.resume(null)

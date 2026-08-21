@@ -56,6 +56,7 @@ import com.neojou.tsumego.play.PlayStatus
 import com.neojou.tsumego.play.Session
 import com.neojou.tsumego.play.numberedSearchPaths
 import com.neojou.tsumego.play.playHeading
+import com.neojou.tsumego.play.searchPathCountLabel
 import kotlinx.coroutines.delay
 import kotlin.time.TimeSource
 import com.neojou.tsumego.ui.BoardView
@@ -216,7 +217,11 @@ private fun PlayScreen(session: Session) {
                     Button(onClick = { session.pass() }) { Text("停") }
                 }
                 Text("目前動作 :", style = MaterialTheme.typography.bodyMedium)
-                Text("    搜尋路徑數目： ${snap.searchPaths.size}", style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    searchPathCountLabel(displayed = snap.searchPaths.size, total = snap.searchPathCount),
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(start = 16.dp),
+                )
                 if (snap.pickingReply) {
                     Text("    從路徑中思考最強應手...", style = MaterialTheme.typography.bodyMedium)
                 }

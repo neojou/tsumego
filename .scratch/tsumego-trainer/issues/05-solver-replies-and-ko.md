@@ -15,4 +15,4 @@
 
 ## Answer
 
-`AlphaBetaSolver` answers 應手 / 反駁手，並把已走完的搜尋路徑寫進 `PlaySnapshot.searchPaths`（顯示時從 1 編號）。路徑搜完設 `pickingReply`。不設時限（ADR-0019）。輪白思考時「停」視為白停。`SessionSolverTest` 與 `SmallTrickSolverTest`。
+`AlphaBetaSolver` answers 應手 / 反駁手。`searchPathCount` 是實際走完的條數，列表最多列 1000。黑遠離目標棋串時先驗證白在戰場的反駁。不設時限（ADR-0019、0021）。

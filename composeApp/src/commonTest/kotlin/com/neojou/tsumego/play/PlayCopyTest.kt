@@ -24,6 +24,12 @@ class PlayCopyTest {
     }
 
     @Test
+    fun searchPathCountLabelShowsActualTotalWhenTruncated() {
+        assertEquals("搜尋路徑數目： 12", searchPathCountLabel(displayed = 12, total = 12))
+        assertEquals("搜尋路徑數目： 2500（列出 1000）", searchPathCountLabel(displayed = 1000, total = 2500))
+    }
+
+    @Test
     fun thinkingSecondsFloorElapsedMillis() {
         assertEquals(0, thinkingSeconds(0))
         assertEquals(2, thinkingSeconds(2_999))
