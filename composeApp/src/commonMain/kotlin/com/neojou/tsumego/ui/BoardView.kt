@@ -82,7 +82,7 @@ fun targetRingRadius(spacing: Float): Float = spacing * 0.56f
 
 fun lastMoveMarkRadius(spacing: Float): Float = spacing * 0.10f
 
-fun stoneFlattenY(oblique: Boolean): Float = if (oblique) 0.84f else 1f
+fun stoneFlattenY(oblique: Boolean): Float = if (oblique) 0.9659f else 1f
 
 fun innerGridStroke(spacing: Float): Float = spacing * 0.035f
 
@@ -90,9 +90,21 @@ fun realOuterStroke(spacing: Float): Float = spacing * 0.14f
 
 fun drawsThickOuterLine(kind: EdgeKind): Boolean = kind == EdgeKind.Real
 
-fun tableColor(): Color = Color(0xFF3E3428)
+fun tableColor(): Color = Color(0xFF2A241C)
+
+fun coordinateInk(): Color = Color(0xFFF4E6CC)
+
+fun overlayCoordinateInk(): Color = Color(0xFF3A2712)
+
+fun playTargetMarks(targets: Set<Point>): Set<Point> = emptySet()
+
+fun confirmTargetMarks(targets: Set<Point>): Set<Point> = targets
+
+fun stoneRimRatio(oblique: Boolean): Float = if (oblique) 0.16f else 0.05f
 
 fun wallCutColor(): Color = Color(0xFF1A1510)
+
+fun gobanThickness(spacing: Float): Float = spacing * 0.14f
 
 fun gridRect(geom: BoardGeom): Rect {
     val spacing = geom.spacing
@@ -106,7 +118,7 @@ fun gridRect(geom: BoardGeom): Rect {
 }
 
 fun woodEdgePad(kind: EdgeKind, spacing: Float): Float =
-    if (kind == EdgeKind.Real) spacing * 0.55f else 0f
+    if (kind == EdgeKind.Real) spacing * 0.45f else 0f
 
 fun wallCutWidth(spacing: Float): Float = spacing * 0.14f
 
@@ -241,6 +253,7 @@ fun BoardView(
             val grid = gridRect(geom)
             val wood = woodRect(geom, edges)
             drawRect(tableColor(), topLeft = Offset.Zero, size = androidx.compose.ui.geometry.Size(size.width, size.height))
+            drawGobanSlab(wood, spacing)
             if (hinoki != null) {
                 clipRect(wood.left, wood.top, wood.right, wood.bottom) {
                     drawTiled(hinoki, wood)
@@ -248,6 +261,7 @@ fun BoardView(
             } else {
                 drawWood(wood, spacing)
             }
+            drawWoodBevel(wood)
             drawWallCuts(grid, edges, spacing)
             drawWalls(grid, edges, spacing)
             drawGrid(geom, edges)
@@ -339,7 +353,7 @@ private fun DrawScope.drawOverlayGrid(overlay: OverlayLayout, edges: Edges) {
 
 private fun DrawScope.drawOverlayCoordinates(overlay: OverlayLayout, measurer: TextMeasurer) {
     val spacing = min(overlay.spacingX, overlay.spacingY)
-    val style = TextStyle(color = Color(0xFF3A2712), fontSize = (spacing * 0.28f).sp)
+    val style = TextStyle(color = overlayCoordinateInk(), fontSize = (spacing * 0.28f).sp)
     for (file in overlay.rect.files) {
         val p = overlay.center(Point(file, overlay.rect.bottom))
         val label = Point.FILE_CHARS[file].toString()
@@ -453,19 +467,60 @@ private fun DrawScope.drawStars(geom: BoardGeom) {
     }
 }
 
+private fun DrawScope.drawGobanSlab(wood: Rect, spacing: Float) {
+    val thick = gobanThickness(spacing)
+    val skew = spacing * 0.05f
+    drawRect(
+        color = Color(0x66000000),
+        topLeft = Offset(wood.left + skew * 0.6f, wood.top + thick * 0.35f),
+        size = androidx.compose.ui.geometry.Size(wood.width + skew, wood.height + thick),
+    )
+    val front = Path().apply {
+        moveTo(wood.left, wood.bottom)
+        lineTo(wood.right, wood.bottom)
+        lineTo(wood.right + skew, wood.bottom + thick)
+        lineTo(wood.left + skew * 0.4f, wood.bottom + thick)
+        close()
+    }
+    drawPath(front, Color(0xFF8A6236))
+    val right = Path().apply {
+        moveTo(wood.right, wood.top)
+        lineTo(wood.right, wood.bottom)
+        lineTo(wood.right + skew, wood.bottom + thick)
+        lineTo(wood.right + skew, wood.top + thick * 0.22f)
+        close()
+    }
+    drawPath(right, Color(0xFF6E4C28))
+}
+
+private fun DrawScope.drawWoodBevel(wood: Rect) {
+    drawLine(
+        color = Color.White.copy(alpha = 0.14f),
+        start = Offset(wood.left, wood.top + 1f),
+        end = Offset(wood.right, wood.top + 1f),
+        strokeWidth = 1.4f,
+    )
+    drawLine(
+        color = Color.Black.copy(alpha = 0.22f),
+        start = Offset(wood.left, wood.bottom - 1f),
+        end = Offset(wood.right, wood.bottom - 1f),
+        strokeWidth = 1.6f,
+    )
+}
+
 private fun DrawScope.drawCoordinates(geom: BoardGeom, measurer: TextMeasurer) {
-    val style = TextStyle(color = Color(0xFF3A2712), fontSize = (geom.spacing * 0.28f).sp)
+    val style = TextStyle(color = coordinateInk(), fontSize = (geom.spacing * 0.24f).sp)
     for (file in geom.rect.files) {
         val p = geom.center(Point(file, geom.rect.bottom))
         val label = Point.FILE_CHARS[file].toString()
         val layout = measurer.measure(label, style)
-        drawText(layout, topLeft = Offset(p.x - layout.size.width / 2f, p.y + geom.spacing * 0.28f))
+        drawText(layout, topLeft = Offset(p.x - layout.size.width / 2f, p.y + geom.spacing * 0.58f))
     }
     for (rank in geom.rect.ranks) {
         val p = geom.center(Point(geom.rect.right, rank))
         val label = rank.toString()
         val layout = measurer.measure(label, style)
-        drawText(layout, topLeft = Offset(p.x + geom.spacing * 0.28f, p.y - layout.size.height / 2f))
+        drawText(layout, topLeft = Offset(p.x + geom.spacing * 0.52f, p.y - layout.size.height / 2f))
     }
 }
 
@@ -503,21 +558,21 @@ private fun DrawScope.drawClamStone(
     alpha: Float,
 ) {
     val rx = stoneRadius(spacing)
-    val ry = rx * stoneFlattenY(oblique)
+    val flatten = stoneFlattenY(oblique)
+    val ry = rx * flatten
+    val rim = rx * stoneRimRatio(oblique)
     val drawn = center + Offset(0f, -spacing * 0.35f * lift)
-    val shadow = drawn + Offset(rx * 0.10f, ry * 0.22f)
     drawOval(
-        color = Color.Black.copy(alpha = 0.28f * alpha),
-        topLeft = Offset(shadow.x - rx, shadow.y - ry),
-        size = androidx.compose.ui.geometry.Size(rx * 2f, ry * 2f),
+        color = Color.Black.copy(alpha = 0.22f * alpha),
+        topLeft = Offset(drawn.x - rx * 0.92f, drawn.y - ry + rim * 0.45f),
+        size = androidx.compose.ui.geometry.Size(rx * 2.12f, ry * 1.22f + rim),
     )
-    if (oblique) {
-        drawOval(
-            color = Color.Black.copy(alpha = 0.35f * alpha),
-            topLeft = Offset(drawn.x - rx, drawn.y - ry + ry * 0.18f),
-            size = androidx.compose.ui.geometry.Size(rx * 2f, ry * 2f),
-        )
-    }
+    val body = if (color == StoneColor.Black) Color(0xFF101010) else Color(0xFFBFA887)
+    drawOval(
+        color = body.copy(alpha = alpha),
+        topLeft = Offset(drawn.x - rx, drawn.y - ry + rim * 0.28f),
+        size = androidx.compose.ui.geometry.Size(rx * 2f, ry * 2f + rim),
+    )
     val oval = Path().apply {
         addOval(Rect(drawn.x - rx, drawn.y - ry, drawn.x + rx, drawn.y + ry))
     }
@@ -531,57 +586,69 @@ private fun DrawScope.drawClamStone(
             )
         }
     } else {
-        drawStone(drawn, rx, color)
+        val brush = if (color == StoneColor.Black) {
+            Brush.radialGradient(
+                colors = listOf(Color(0xFF5A5A5A), Color(0xFF1A1A1A), Color(0xFF050505)),
+                center = drawn - Offset(rx * 0.32f, ry * 0.38f),
+                radius = rx * 1.45f,
+            )
+        } else {
+            Brush.radialGradient(
+                colors = listOf(Color(0xFFF6EFE2), Color(0xFFE8D9C4), Color(0xFFC4B49A)),
+                center = drawn - Offset(rx * 0.32f, ry * 0.38f),
+                radius = rx * 1.45f,
+            )
+        }
+        drawOval(
+            brush = brush,
+            topLeft = Offset(drawn.x - rx, drawn.y - ry),
+            size = androidx.compose.ui.geometry.Size(rx * 2f, ry * 2f),
+        )
     }
-    val light = Color.White.copy(alpha = (if (color == StoneColor.Black) 0.16f else 0.28f) * alpha)
+    drawOval(
+        brush = Brush.radialGradient(
+            colors = listOf(
+                Color.Transparent,
+                Color.Black.copy(alpha = (if (color == StoneColor.Black) 0.16f else 0.10f) * alpha),
+            ),
+            center = drawn + Offset(rx * 0.08f, ry * 0.42f),
+            radius = rx * 1.05f,
+        ),
+        topLeft = Offset(drawn.x - rx, drawn.y - ry),
+        size = androidx.compose.ui.geometry.Size(rx * 2f, ry * 2f),
+    )
+    val light = Color.White.copy(alpha = (if (color == StoneColor.Black) 0.14f else 0.22f) * alpha)
     drawOval(
         brush = Brush.radialGradient(
             colors = listOf(light, Color.Transparent),
-            center = drawn - Offset(rx * 0.32f, ry * 0.38f),
-            radius = rx * 1.1f,
+            center = drawn - Offset(rx * 0.28f, ry * 0.34f),
+            radius = rx * 0.82f,
         ),
         topLeft = Offset(drawn.x - rx, drawn.y - ry),
         size = androidx.compose.ui.geometry.Size(rx * 2f, ry * 2f),
     )
     if (target) {
         drawOval(
-            color = Color(0xFFE53935).copy(alpha = alpha),
-            topLeft = Offset(drawn.x - targetRingRadius(spacing), drawn.y - targetRingRadius(spacing) * stoneFlattenY(oblique)),
+            color = Color(0xFFD32F2F).copy(alpha = alpha),
+            topLeft = Offset(drawn.x - targetRingRadius(spacing), drawn.y - targetRingRadius(spacing) * flatten),
             size = androidx.compose.ui.geometry.Size(
                 targetRingRadius(spacing) * 2f,
-                targetRingRadius(spacing) * 2f * stoneFlattenY(oblique),
+                targetRingRadius(spacing) * 2f * flatten,
             ),
-            style = Stroke(width = spacing * 0.06f),
+            style = Stroke(width = spacing * 0.035f),
         )
     }
     if (lastMove) {
         val mark = if (color == StoneColor.Black) Color.White else Color(0xFF3A2712)
         drawOval(
             color = mark.copy(alpha = alpha),
-            topLeft = Offset(drawn.x - lastMoveMarkRadius(spacing), drawn.y - lastMoveMarkRadius(spacing) * stoneFlattenY(oblique)),
+            topLeft = Offset(drawn.x - lastMoveMarkRadius(spacing), drawn.y - lastMoveMarkRadius(spacing) * flatten),
             size = androidx.compose.ui.geometry.Size(
                 lastMoveMarkRadius(spacing) * 2f,
-                lastMoveMarkRadius(spacing) * 2f * stoneFlattenY(oblique),
+                lastMoveMarkRadius(spacing) * 2f * flatten,
             ),
         )
     }
-}
-
-private fun DrawScope.drawStone(center: Offset, radius: Float, color: StoneColor) {
-    val brush = if (color == StoneColor.Black) {
-        Brush.radialGradient(
-            colors = listOf(Color(0xFF5A5A5A), Color(0xFF1A1A1A), Color(0xFF050505)),
-            center = center - Offset(radius * 0.32f, radius * 0.38f),
-            radius = radius * 1.45f,
-        )
-    } else {
-        Brush.radialGradient(
-            colors = listOf(Color(0xFFF6EFE2), Color(0xFFE8D9C4), Color(0xFFC4B49A)),
-            center = center - Offset(radius * 0.32f, radius * 0.38f),
-            radius = radius * 1.45f,
-        )
-    }
-    drawCircle(brush = brush, radius = radius, center = center)
 }
 
 

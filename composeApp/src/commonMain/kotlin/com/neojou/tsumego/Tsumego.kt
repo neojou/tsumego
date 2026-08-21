@@ -36,7 +36,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.neojou.tools.LogLevel
 import com.neojou.tools.MyLog
@@ -62,7 +64,10 @@ import com.neojou.tsumego.play.StoneSoundKind
 import com.neojou.tsumego.play.playStoneSound
 import com.neojou.tsumego.play.stoneFx
 import com.neojou.tsumego.play.numberedSearchPaths
+import com.neojou.tsumego.play.aboutProductSp
+import com.neojou.tsumego.play.aboutSummarySp
 import com.neojou.tsumego.play.aboutTitle
+import com.neojou.tsumego.play.aboutVersionSp
 import com.neojou.tsumego.play.emptyPlayHint
 import com.neojou.tsumego.play.playHeading
 import com.neojou.tsumego.play.redoLabel
@@ -71,6 +76,7 @@ import kotlinx.coroutines.delay
 import kotlin.time.TimeSource
 import com.neojou.tsumego.ui.BoardView
 import com.neojou.tsumego.ui.ConfirmScreen
+import com.neojou.tsumego.ui.playTargetMarks
 import kotlinx.coroutines.launch
 
 private const val TAG = "Tsumego"
@@ -265,7 +271,7 @@ private fun PlayScreen(session: Session) {
                 rect = snap.problem.rect,
                 edges = snap.problem.edges,
                 stones = snap.stones,
-                targets = snap.problem.targets,
+                targets = playTargetMarks(snap.problem.targets),
                 lastMove = snap.lastMove,
                 enabled = clickable,
                 drop = dropPt,
@@ -330,16 +336,31 @@ private fun AboutDialog(onDismiss: () -> Unit) {
             modifier = Modifier.widthIn(max = 400.dp).fillMaxWidth(),
         ) {
             Column(
-                modifier = Modifier.padding(20.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.padding(24.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                Text(aboutTitle(), style = MaterialTheme.typography.titleMedium)
-                Text(AppVersion.APP_NAME, style = MaterialTheme.typography.displaySmall)
-                Text(AppVersion.SUMMARY, style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    aboutTitle(),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                )
+                Text(
+                    AppVersion.APP_NAME,
+                    style = MaterialTheme.typography.titleLarge.copy(
+                        fontSize = aboutProductSp().sp,
+                        fontWeight = FontWeight.Medium,
+                        letterSpacing = 0.4.sp,
+                    ),
+                )
+                Text(
+                    AppVersion.SUMMARY,
+                    style = MaterialTheme.typography.bodyLarge.copy(fontSize = aboutSummarySp().sp),
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.86f),
+                )
                 Text(
                     AppVersion.DISPLAY,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = aboutVersionSp().sp),
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
                 )
                 TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.End)) {
                     Text("關閉")

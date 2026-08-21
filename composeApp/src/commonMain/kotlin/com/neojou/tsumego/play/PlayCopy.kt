@@ -25,3 +25,9 @@ fun emptyPlayHint(): String =
     "請用 Import 匯入題目圖片，或 File → Open 打開題目檔，或直接選 File → Samples 下的例題開始玩"
 
 fun aboutTitle(): String = "關於"
+
+fun aboutProductSp(): Float = 22f
+
+fun aboutSummarySp(): Float = 16f
+
+fun aboutVersionSp(): Float = 13f

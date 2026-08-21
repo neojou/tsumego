@@ -92,7 +92,7 @@ fun ConfirmScreen(
                 rect = draft.rect,
                 edges = draft.edges,
                 stones = draft.stones,
-                targets = draft.targets,
+                targets = confirmTargetMarks(draft.targets),
                 overlayImage = image,
                 imageGrid = draft.imageGrid,
                 albedo = rememberBoardAlbedo(),
