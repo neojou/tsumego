@@ -12,6 +12,25 @@ import kotlin.test.assertTrue
 
 class DiagramDraftTest {
     @Test
+    fun problemRoundTripsToConfirmDraftForEdit() {
+        val problem = cornerProblem(
+            black = "A2,B1,C2",
+            white = "B2",
+            goal = Goal.Kill,
+            targets = "B2",
+        )
+        val draft = problem.toConfirmDraft()
+        assertEquals(problem.rect, draft.rect)
+        assertEquals(problem.edges, draft.edges)
+        assertEquals(problem.stones, draft.stones)
+        assertEquals(Goal.Kill, draft.goal)
+        assertEquals(problem.targets, draft.targets)
+        val edited = draft.copy(goal = Goal.KoKill)
+        assertEquals(Goal.KoKill, edited.toProblem().goal)
+        assertEquals(problem.stones, edited.toProblem().stones)
+    }
+
+    @Test
     fun whiteFirstFlipsStonesAndKeepsTargetPoints() {
         val problem = cornerProblem(
             black = "A2,B1",

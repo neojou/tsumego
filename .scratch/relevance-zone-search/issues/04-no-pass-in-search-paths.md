@@ -12,4 +12,4 @@
 
 ## Answer
 
-`actions()` 只回落子、不含停。RZS 空手只判定區外落子。`AlphaBetaSolver` 不再呼叫蒙地卡羅，Session 不再傳開局白活點。使用者仍可按停。搜尋路徑測試 `searchPathsDoNotListPass`。
+停只接在候選手最後，供「雙方已停則剩餘當死」。`onPath` 不報含停的路徑。RZS 空手只判定區外落子。不把蒙地卡羅／開局白活點接入搜尋。`searchPathsDoNotListPass` 仍過。

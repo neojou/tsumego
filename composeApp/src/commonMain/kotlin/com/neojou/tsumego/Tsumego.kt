@@ -41,11 +41,11 @@ import androidx.compose.ui.window.Dialog
 import com.neojou.tools.LogLevel
 import com.neojou.tools.MyLog
 import com.neojou.tools.ui.menu.MyTopMenuBar
-import com.neojou.tools.ui.menu.MyTopMenuItem
 import com.neojou.tsumego.board.Problem
 import com.neojou.tsumego.board.StoneColor
 import com.neojou.tsumego.diagram.ConfirmDraft
 import com.neojou.tsumego.diagram.readDiagram
+import com.neojou.tsumego.diagram.toConfirmDraft
 import com.neojou.tsumego.io.openDiagramImage
 import com.neojou.tsumego.io.openProblemText
 import com.neojou.tsumego.io.platformDiagramReader
@@ -88,55 +88,36 @@ fun Tsumego() {
         session = Session(problem = playable, scope = scope)
     }
 
-    val topMenus = listOf(
-        MyTopMenuItem(
-            id = "input",
-            label = "Input",
-            children = listOf(
-                MyTopMenuItem(
-                    id = "black-first",
-                    label = "Black First",
-                    onClick = {
-                        scope.launch { openImport(StoneColor.Black) { d, err -> draft = d; errorMessage = err } }
-                    },
-                ),
-                MyTopMenuItem(
-                    id = "white-first",
-                    label = "White First",
-                    onClick = {
-                        scope.launch { openImport(StoneColor.White) { d, err -> draft = d; errorMessage = err } }
-                    },
-                ),
-            ),
-        ),
-        MyTopMenuItem(
-            id = "file",
-            label = "File",
-            children = fileMenuItems(
-                saveEnabled = currentProblem != null,
-                onOpen = {
-                    scope.launch {
-                        val text = openProblemText() ?: return@launch
-                        when (val loaded = ProblemLibrary.decode(text)) {
-                            is ProblemLoad.Ok -> startProblem(loaded.problem)
-                            is ProblemLoad.Err -> errorMessage = loaded.message
-                        }
-                    }
-                },
-                onSave = {
-                    val problem = currentProblem ?: return@fileMenuItems
-                    scope.launch {
-                        val ok = saveProblemText("problem.tsumego.json", ProblemLibrary.encode(problem))
-                        if (!ok) errorMessage = "無法寫入題目檔"
-                    }
-                },
-            ),
-        ),
-        MyTopMenuItem(
-            id = "about",
-            label = "About",
-            onClick = { showAbout = true },
-        ),
+    val topMenus = shellMenuBarItems(
+        saveEnabled = currentProblem != null,
+        editEnabled = currentProblem != null,
+        onBlackFirst = {
+            scope.launch { openImport(StoneColor.Black) { d, err -> draft = d; errorMessage = err } }
+        },
+        onWhiteFirst = {
+            scope.launch { openImport(StoneColor.White) { d, err -> draft = d; errorMessage = err } }
+        },
+        onOpen = {
+            scope.launch {
+                val text = openProblemText() ?: return@launch
+                when (val loaded = ProblemLibrary.decode(text)) {
+                    is ProblemLoad.Ok -> startProblem(loaded.problem)
+                    is ProblemLoad.Err -> errorMessage = loaded.message
+                }
+            }
+        },
+        onSave = {
+            val problem = currentProblem ?: return@shellMenuBarItems
+            scope.launch {
+                val ok = saveProblemText("problem.tsumego.json", ProblemLibrary.encode(problem))
+                if (!ok) errorMessage = "無法寫入題目檔"
+            }
+        },
+        onEdit = {
+            val problem = currentProblem ?: return@shellMenuBarItems
+            draft = problem.toConfirmDraft()
+        },
+        onAbout = { showAbout = true },
     )
 
     LaunchedEffect(Unit) {

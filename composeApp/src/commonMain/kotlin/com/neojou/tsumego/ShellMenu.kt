@@ -10,3 +10,30 @@ fun fileMenuItems(
     MyTopMenuItem(id = "open", label = "Open", onClick = onOpen),
     MyTopMenuItem(id = "save", label = "Save", enabled = saveEnabled, onClick = onSave),
 )
+
+fun shellMenuBarItems(
+    saveEnabled: Boolean,
+    editEnabled: Boolean,
+    onBlackFirst: () -> Unit,
+    onWhiteFirst: () -> Unit,
+    onOpen: () -> Unit,
+    onSave: () -> Unit,
+    onEdit: () -> Unit,
+    onAbout: () -> Unit,
+): List<MyTopMenuItem> = listOf(
+    MyTopMenuItem(
+        id = "input",
+        label = "Input",
+        children = listOf(
+            MyTopMenuItem(id = "black-first", label = "Black First", onClick = onBlackFirst),
+            MyTopMenuItem(id = "white-first", label = "White First", onClick = onWhiteFirst),
+        ),
+    ),
+    MyTopMenuItem(
+        id = "file",
+        label = "File",
+        children = fileMenuItems(saveEnabled = saveEnabled, onOpen = onOpen, onSave = onSave),
+    ),
+    MyTopMenuItem(id = "edit", label = "Edit", enabled = editEnabled, onClick = onEdit),
+    MyTopMenuItem(id = "about", label = "About", onClick = onAbout),
+)

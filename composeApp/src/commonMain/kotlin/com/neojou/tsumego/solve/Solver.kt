@@ -183,7 +183,7 @@ private class Search(
             else -> null
         }
         if (terminal != null) {
-            if (path.isNotEmpty()) {
+            if (path.isNotEmpty() && path.none { it is Action.Pass }) {
                 val result = if (terminal is Force.Yes) "成功" else "失敗"
                 onPath(formatSearchPath(path, result))
             }
@@ -351,7 +351,7 @@ internal fun actions(
             }
         }.thenBy { it },
     )
-    return ordered.map { Action.Move(it) }
+    return ordered.map { Action.Move(it) } + Action.Pass
 }
 
 internal fun immediateRefutations(

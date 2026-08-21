@@ -11,6 +11,8 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNotEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class SmallTrickPlayTest {
@@ -36,5 +38,42 @@ class SmallTrickPlayTest {
         session.waitForIdle()
         assertEquals(StoneColor.Black, session.state.value.stones[pt("S19")])
         assertTrue(session.state.value.status == PlayStatus.InProgress || session.state.value.status == PlayStatus.Success)
+    }
+
+    @Test
+    fun capturingR17R18LeavesS16AndT18SoKillIsNotYetSuccess() = runTest {
+        val session = testSession(problem)
+        assertTrue(session.tryMove(pt("S19")))
+        session.waitForIdle()
+        assertTrue(session.tryMove(pt("R19")))
+        session.waitForIdle()
+        assertTrue(session.tryMove(pt("S18")))
+        session.waitForIdle()
+        assertTrue(session.tryMove(pt("S17")))
+        session.waitForIdle()
+        val snap = session.state.value
+        assertNull(snap.stones[pt("R17")])
+        assertNull(snap.stones[pt("R18")])
+        assertEquals(StoneColor.White, snap.stones[pt("S16")])
+        assertEquals(StoneColor.White, snap.stones[pt("T18")])
+        assertNotEquals(PlayStatus.Success, snap.status)
+    }
+
+    @Test
+    fun capturingTheOnlyMarkedWhiteStringIsImmediateSuccess() = runTest {
+        val narrowed = problem.copy(targets = setOf(pt("R17"), pt("R18")))
+        val session = testSession(narrowed)
+        assertTrue(session.tryMove(pt("S19")))
+        session.waitForIdle()
+        assertTrue(session.tryMove(pt("R19")))
+        session.waitForIdle()
+        assertTrue(session.tryMove(pt("S18")))
+        session.waitForIdle()
+        assertTrue(session.tryMove(pt("S17")))
+        session.waitForIdle()
+        val snap = session.state.value
+        assertNull(snap.stones[pt("R17")])
+        assertNull(snap.stones[pt("R18")])
+        assertEquals(PlayStatus.Success, snap.status)
     }
 }

@@ -96,6 +96,15 @@ fun emptyDraft(image: ByteArray?): ConfirmDraft {
     )
 }
 
+fun Problem.toConfirmDraft(imageBytes: ByteArray? = null): ConfirmDraft = ConfirmDraft(
+    imageBytes = imageBytes,
+    rect = rect,
+    edges = edges,
+    stones = stones,
+    goal = goal,
+    targets = targets,
+)
+
 fun readDiagram(reader: DiagramReader, image: ByteArray, diagramFirst: StoneColor): ConfirmDraft {
     val draft = reader.read(image, diagramFirst)
     return if (diagramFirst == StoneColor.White) draft.flipped() else draft
