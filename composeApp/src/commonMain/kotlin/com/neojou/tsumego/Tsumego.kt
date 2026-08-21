@@ -23,6 +23,8 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -33,10 +35,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.neojou.tools.LogLevel
 import com.neojou.tools.MyLog
@@ -54,9 +54,15 @@ import com.neojou.tsumego.io.saveProblemText
 import com.neojou.tsumego.library.ProblemLibrary
 import com.neojou.tsumego.library.ProblemLoad
 import com.neojou.tsumego.library.Samples
+import com.neojou.tsumego.play.CAPTURE_RETRACT_MS
+import com.neojou.tsumego.play.PLACE_DROP_MS
 import com.neojou.tsumego.play.PlayStatus
 import com.neojou.tsumego.play.Session
+import com.neojou.tsumego.play.StoneSoundKind
+import com.neojou.tsumego.play.playStoneSound
+import com.neojou.tsumego.play.stoneFx
 import com.neojou.tsumego.play.numberedSearchPaths
+import com.neojou.tsumego.play.aboutTitle
 import com.neojou.tsumego.play.emptyPlayHint
 import com.neojou.tsumego.play.playHeading
 import com.neojou.tsumego.play.redoLabel
@@ -152,7 +158,7 @@ fun Tsumego() {
                 )
                 currentSession != null -> PlayScreen(currentSession)
                 else -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text(emptyPlayHint())
+                    Text(emptyPlayHint(), style = MaterialTheme.typography.bodyLarge)
                 }
             }
         }
@@ -177,7 +183,32 @@ private suspend fun openImport(diagramFirst: StoneColor, done: (ConfirmDraft?, S
 @Composable
 private fun PlayScreen(session: Session) {
     val snap by session.state.collectAsState()
-    val clickable = snap.status == PlayStatus.InProgress
+    var prevStones by remember { mutableStateOf(snap.stones) }
+    val dropLift = remember { Animatable(0f) }
+    val retractT = remember { Animatable(1f) }
+    var dropPt by remember { mutableStateOf<com.neojou.tsumego.board.Point?>(null) }
+    var retracting by remember { mutableStateOf(emptyMap<com.neojou.tsumego.board.Point, com.neojou.tsumego.board.StoneColor>()) }
+    LaunchedEffect(snap.stones, snap.lastMove, snap.lastMoveIsPass) {
+        val undo = snap.lastMove == null && prevStones != snap.stones && !snap.lastMoveIsPass
+        val fx = stoneFx(prevStones, snap.stones, snap.lastMove, snap.lastMoveIsPass, undo)
+        prevStones = snap.stones
+        dropPt = fx.drop
+        retracting = fx.retract
+        if (fx.drop != null) {
+            dropLift.snapTo(1f)
+            dropLift.animateTo(0f, tween(PLACE_DROP_MS))
+        } else {
+            dropLift.snapTo(0f)
+        }
+        if (StoneSoundKind.Place in fx.sounds) playStoneSound(StoneSoundKind.Place)
+        if (fx.retract.isNotEmpty()) {
+            retractT.snapTo(0f)
+            retractT.animateTo(1f, tween(CAPTURE_RETRACT_MS))
+        }
+        if (StoneSoundKind.Capture in fx.sounds) playStoneSound(StoneSoundKind.Capture)
+        if (fx.retract.isEmpty()) retracting = emptyMap()
+    }
+    val clickable = snap.status == PlayStatus.InProgress && dropLift.value < 0.08f
     var thinkSec by remember { mutableStateOf(0L) }
     LaunchedEffect(snap.status) {
         thinkSec = 0
@@ -189,7 +220,7 @@ private fun PlayScreen(session: Session) {
         }
     }
     Column(Modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(snap.problem.goal.playHeading(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Text(snap.problem.goal.playHeading(), style = MaterialTheme.typography.titleMedium)
         when (snap.status) {
             PlayStatus.InProgress -> Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -234,12 +265,21 @@ private fun PlayScreen(session: Session) {
                 rect = snap.problem.rect,
                 edges = snap.problem.edges,
                 stones = snap.stones,
+                targets = snap.problem.targets,
                 lastMove = snap.lastMove,
                 enabled = clickable,
+                drop = dropPt,
+                dropLift = dropLift.value,
+                retract = retracting,
+                retractT = retractT.value,
+                albedo = rememberBoardAlbedo(),
                 onClick = { session.tryMove(it) },
                 modifier = Modifier.weight(1f).fillMaxHeight(),
             )
-            SearchPathPane(paths = snap.searchPaths, modifier = Modifier.width(340.dp).fillMaxHeight())
+            SearchPathPane(
+                paths = snap.searchPaths,
+                modifier = Modifier.width(340.dp).fillMaxHeight(),
+            )
         }
     }
 }
@@ -251,8 +291,13 @@ private fun SearchPathPane(paths: List<String>, modifier: Modifier = Modifier) {
     LaunchedEffect(paths.size) {
         if (numbered.isNotEmpty()) listState.scrollToItem(numbered.lastIndex)
     }
-    Column(modifier) {
-        Text("搜尋路徑", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+    Surface(
+        modifier = modifier,
+        color = Color(0xFFF3EDE1),
+        shape = RoundedCornerShape(2.dp),
+    ) {
+    Column(Modifier.padding(10.dp)) {
+        Text("搜尋路徑", style = MaterialTheme.typography.titleMedium)
         Box(Modifier.weight(1f).fillMaxWidth().padding(top = 8.dp)) {
             LazyColumn(
                 state = listState,
@@ -261,8 +306,7 @@ private fun SearchPathPane(paths: List<String>, modifier: Modifier = Modifier) {
                 items(numbered) { line ->
                     Text(
                         line,
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 12.sp,
+                        style = MaterialTheme.typography.bodyLarge,
                         modifier = Modifier.padding(bottom = 6.dp),
                     )
                 }
@@ -272,6 +316,7 @@ private fun SearchPathPane(paths: List<String>, modifier: Modifier = Modifier) {
                 modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
             )
         }
+    }
     }
 }
 
@@ -286,25 +331,15 @@ private fun AboutDialog(onDismiss: () -> Unit) {
         ) {
             Column(
                 modifier = Modifier.padding(20.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Text("About", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-                Text(AppVersion.APP_NAME, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
+                Text(aboutTitle(), style = MaterialTheme.typography.titleMedium)
+                Text(AppVersion.APP_NAME, style = MaterialTheme.typography.displaySmall)
+                Text(AppVersion.SUMMARY, style = MaterialTheme.typography.bodyLarge)
                 Text(
-                    AppVersion.APP_NAME_EN,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f),
-                )
-                Text(
-                    "版本 ${AppVersion.DISPLAY}",
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-                Text(
-                    AppVersion.SUMMARY,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
+                    AppVersion.DISPLAY,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
                 )
                 TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.End)) {
                     Text("關閉")

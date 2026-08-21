@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import com.neojou.tsumego.board.EdgeKind
 import com.neojou.tsumego.board.Point
 import com.neojou.tsumego.diagram.ConfirmDraft
+import com.neojou.tsumego.rememberBoardAlbedo
 
 @Composable
 fun ConfirmScreen(
@@ -94,6 +95,7 @@ fun ConfirmScreen(
                 targets = draft.targets,
                 overlayImage = image,
                 imageGrid = draft.imageGrid,
+                albedo = rememberBoardAlbedo(),
                 onClick = { point ->
                     onChange(draft.applyClick(point, targetMode))
                 },

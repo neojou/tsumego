@@ -1,5 +1,6 @@
 package com.neojou.tsumego.play
 
+import com.neojou.tsumego.AppVersion
 import com.neojou.tsumego.board.Goal
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -48,5 +49,13 @@ class PlayCopyTest {
         assertEquals(0, thinkingSeconds(0))
         assertEquals(2, thinkingSeconds(2_999))
         assertEquals(12, thinkingSeconds(12_001))
+    }
+
+    @Test
+    fun aboutCopyPutsProductAboveVersion() {
+        assertEquals("關於", aboutTitle())
+        assertEquals("詰碁", AppVersion.APP_NAME)
+        assertEquals("圍棋死活訓練機", AppVersion.SUMMARY)
+        assertEquals("v0.2", AppVersion.DISPLAY)
     }
 }
