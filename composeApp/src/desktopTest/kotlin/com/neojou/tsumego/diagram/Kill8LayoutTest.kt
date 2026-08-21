@@ -9,17 +9,17 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
-/** Independent of the detector: 8K-kill.png is O–T / 11–19. S19 black, P17 white, T19 empty. */
+/** Independent of the detector: 8K-kill.png is P–T / 14–19. Q19 black, R19 white, S19 empty. */
 class Kill8LayoutTest {
     private val bytes: ByteArray = loadPng("8K-kill.png")
 
     @Test
-    fun detectedCropIsThePrintedOT1119Corner() {
+    fun detectedCropIsThePrintedPT1419Corner() {
         val layout = detectDiagramLayout(bytes)
         assertNotNull(layout)
-        assertEquals(Point.fileIndex('O'), layout.rect.left)
+        assertEquals(Point.fileIndex('P'), layout.rect.left)
         assertEquals(Point.fileIndex('T'), layout.rect.right)
-        assertEquals(11, layout.rect.bottom)
+        assertEquals(14, layout.rect.bottom)
         assertEquals(19, layout.rect.top)
     }
 
@@ -38,11 +38,12 @@ class Kill8LayoutTest {
             imageGrid = layout.imageGrid,
             rect = layout.rect,
         )
-        assertEquals(StoneColor.Black, sampleColor(image, overlay.center(pt("S19"))))
-        assertEquals(StoneColor.White, sampleColor(image, overlay.center(pt("P17"))))
-        assertEquals(StoneColor.White, sampleColor(image, overlay.center(pt("Q12"))))
-        assertEquals(StoneColor.Black, sampleColor(image, overlay.center(pt("R16"))))
+        assertEquals(StoneColor.Black, sampleColor(image, overlay.center(pt("Q19"))))
+        assertEquals(StoneColor.White, sampleColor(image, overlay.center(pt("R19"))))
+        assertEquals(StoneColor.White, sampleColor(image, overlay.center(pt("T16"))))
+        assertEquals(StoneColor.Black, sampleColor(image, overlay.center(pt("Q16"))))
+        assertNull(sampleColor(image, overlay.center(pt("S19"))))
         assertNull(sampleColor(image, overlay.center(pt("T19"))))
-        assertNull(sampleColor(image, overlay.center(pt("O19"))))
+        assertNull(sampleColor(image, overlay.center(pt("P19"))))
     }
 }

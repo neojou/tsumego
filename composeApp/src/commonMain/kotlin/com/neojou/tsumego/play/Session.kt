@@ -1,5 +1,6 @@
 package com.neojou.tsumego.play
 
+import com.neojou.tsumego.board.Outcome
 import com.neojou.tsumego.board.Point
 import com.neojou.tsumego.board.Position
 import com.neojou.tsumego.board.Problem
@@ -135,7 +136,7 @@ class Session(
         when {
             problem.goal.isSuccess(outcome) ->
                 publish(PlayStatus.Success, lastPoint(action), action is Action.Pass)
-            both ->
+            both || outcome != Outcome.Unsettled ->
                 publish(PlayStatus.Failure, lastPoint(action), action is Action.Pass)
             else -> launchSearch()
         }

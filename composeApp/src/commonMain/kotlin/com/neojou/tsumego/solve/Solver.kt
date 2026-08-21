@@ -136,6 +136,7 @@ private class Search(
     private val nodes = IntArray(1)
 
     suspend fun pickResist(input: SolverInput, proveDepth: Int): SolverResult {
+        val liveAt = firstOwnerMoveToTwoEyes(input.position, problem.targets)
         val scored = ArrayList<ResistScore>()
         for (action in moves(input.position, StoneColor.White)) {
             if (budget.expired()) return SolverResult.Timeout
@@ -161,6 +162,7 @@ private class Search(
                     winningBlack = winning,
                     proofPly = found.proofPly,
                     nodes = found.nodes,
+                    livePoint = action is Action.Move && action.point == liveAt,
                 )
             }
         }
@@ -500,16 +502,18 @@ private data class ResistScore(
     val winningBlack: Int,
     val proofPly: Int,
     val nodes: Int,
+    val livePoint: Boolean,
 )
 
 /**
  * Narrower kill first (fewer proven winning black replies), then longer ply,
- * then more nodes, then smaller coordinates.
+ * then more nodes, then 做活點, then smaller coordinates.
  */
 private val resistOrder = compareBy<ResistScore> { it.winningBlack }
     .thenBy { if (it.action is Action.Pass) 1 else 0 }
     .thenByDescending { it.proofPly }
     .thenByDescending { it.nodes }
+    .thenBy { if (it.livePoint) 0 else 1 }
     .thenBy { actionRank(it.action) }
 
 private fun actionRank(action: Action): Int = when (action) {

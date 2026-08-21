@@ -2,12 +2,14 @@ package com.neojou.tsumego.classify
 
 import com.neojou.tsumego.board.Goal
 import com.neojou.tsumego.board.Outcome
+import com.neojou.tsumego.board.isSuccess
 import com.neojou.tsumego.board.Position
 import com.neojou.tsumego.board.StoneColor
 import com.neojou.tsumego.boxedProblem
 import com.neojou.tsumego.pt
 import com.neojou.tsumego.solve.Action
 import com.neojou.tsumego.ScriptedSolver
+import com.neojou.tsumego.KILL_8K_JSON
 import com.neojou.tsumego.SMALL_TRICK_JSON
 import com.neojou.tsumego.smallTrickPlayable
 import com.neojou.tsumego.library.ProblemLibrary
@@ -147,5 +149,45 @@ class DeadShapeTest {
             session.waitForIdle()
         }
         assertEquals(PlayStatus.Success, session.state.value.status)
+    }
+
+    @Test
+    fun atariStringIsNotBensonAliveViaANeighbourWhiteStone() {
+        val loaded = assertIs<ProblemLoad.Ok>(ProblemLibrary.decode(KILL_8K_JSON)).problem
+        var pos = Position.initial(loaded)
+        for ((color, label) in listOf(
+            StoneColor.Black to "S18",
+            StoneColor.White to "T18",
+            StoneColor.Black to "S19",
+            StoneColor.White to "S17",
+        )) {
+            pos = requireNotNull(pos.play(pt(label), color)) { "illegal $color $label" }
+        }
+        val alive = bensonAlive(pos, StoneColor.White)
+        assertTrue(
+            loaded.targets.none { it in alive },
+            "Benson ${alive.sorted().joinToString { it.label }}",
+        )
+        assertTrue(
+            classify(pos, loaded.targets, bothPassed = false) != Outcome.UnconditionalLive,
+            "outcome=${classify(pos, loaded.targets, bothPassed = false)}",
+        )
+    }
+
+    @Test
+    fun kill8KoTakeIsKoKillNotUnconditionalDead() {
+        val loaded = assertIs<ProblemLoad.Ok>(ProblemLibrary.decode(KILL_8K_JSON)).problem
+        var pos = Position.initial(loaded)
+        for ((color, label) in listOf(
+            StoneColor.Black to "T18",
+            StoneColor.White to "S18",
+            StoneColor.Black to "T17",
+            StoneColor.White to "T19",
+            StoneColor.Black to "S19",
+        )) {
+            pos = requireNotNull(pos.play(pt(label), color)) { "illegal $color $label" }
+        }
+        assertEquals(Outcome.KoKill, classify(pos, loaded.targets, bothPassed = false))
+        assertTrue(!loaded.goal.isSuccess(Outcome.KoKill))
     }
 }

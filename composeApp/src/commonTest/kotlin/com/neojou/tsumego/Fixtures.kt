@@ -102,6 +102,22 @@ object AlwaysPassSolver : Solver {
     override suspend fun solve(input: SolverInput): SolverResult = SolverResult.Resist(Action.Pass)
 }
 
+const val KILL_8K_JSON = """
+{
+    "format": "tsumego",
+    "version": 1,
+    "rect": { "left": "P", "right": "T", "bottom": 14, "top": 19 },
+    "edges": { "left": "wall", "right": "real", "bottom": "wall", "top": "real" },
+    "stones": {
+        "Q15": "black", "Q16": "black", "Q17": "black", "Q18": "black", "Q19": "black",
+        "R15": "black", "R16": "white", "R17": "white", "R18": "white", "R19": "white",
+        "S15": "black", "S16": "white", "T15": "black", "T16": "white"
+    },
+    "goal": "kill",
+    "targets": ["R16", "R17", "R18", "R19", "S16", "T16"]
+}
+"""
+
 const val SMALL_TRICK_JSON = """
 {
     "format": "tsumego",

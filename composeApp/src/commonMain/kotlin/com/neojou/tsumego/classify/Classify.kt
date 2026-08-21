@@ -308,8 +308,9 @@ internal fun bensonAlive(position: Position, color: StoneColor): Set<Point> {
             }
             if (leaks) continue
             if (empty.any { e -> position.neighbors(e).none { it in remainingStones } }) continue
+            val empties = empty.toSet()
             for (string in remaining) {
-                val adjacent = string.any { pt -> position.neighbors(pt).any { it in region } }
+                val adjacent = string.any { pt -> position.neighbors(pt).any { it in empties } }
                 if (adjacent) vital[string] = (vital[string] ?: 0) + 1
             }
         }
@@ -366,10 +367,10 @@ private fun classifyKo(
         if (blackWins == BasicLife.Live && whiteWins == BasicLife.Live) return Outcome.UnconditionalLive
     }
     if (colors == setOf(StoneColor.White)) {
-        if (blackWins == BasicLife.Dead && whiteWins != BasicLife.Dead) return Outcome.KoKill
-        if (blackWins == BasicLife.Dead && whiteWins == BasicLife.Dead && onBoard.isEmpty()) {
-            return Outcome.UnconditionalDead
-        }
+        if (blackWins == BasicLife.Live && whiteWins == BasicLife.Live) return Outcome.UnconditionalLive
+        if (onBoard.isEmpty()) return Outcome.UnconditionalDead
+        // 劫還在、目標仍在盤上：劫殺，不能靠做不成兩眼當成無條件死。
+        return Outcome.KoKill
     }
     if (bothPassed && blackWins == BasicLife.Seki && whiteWins == BasicLife.Seki) return Outcome.Seki
     return null
