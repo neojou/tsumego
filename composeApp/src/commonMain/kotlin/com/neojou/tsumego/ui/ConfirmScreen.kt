@@ -3,9 +3,12 @@ package com.neojou.tsumego.ui
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -76,18 +79,28 @@ fun ConfirmScreen(
                 if (rank >= draft.rect.bottom) onChange(draft.withRect(draft.rect.copy(top = rank)))
             }
         }
-        BoardView(
-            rect = draft.rect,
-            edges = draft.edges,
-            stones = draft.stones,
-            targets = draft.targets,
-            overlayImage = image,
-            imageGrid = draft.imageGrid,
-            onClick = { point ->
-                onChange(draft.applyClick(point, targetMode))
-            },
-            modifier = Modifier.weight(1f).fillMaxWidth(),
-        )
+        Row(
+            Modifier.weight(1f).fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                targetListLabel(draft.targets),
+                style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier.widthIn(min = 140.dp).width(200.dp).fillMaxHeight(),
+            )
+            BoardView(
+                rect = draft.rect,
+                edges = draft.edges,
+                stones = draft.stones,
+                targets = draft.targets,
+                overlayImage = image,
+                imageGrid = draft.imageGrid,
+                onClick = { point ->
+                    onChange(draft.applyClick(point, targetMode))
+                },
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+            )
+        }
         if (error != null) {
             Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
         }

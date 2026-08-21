@@ -8,7 +8,6 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
@@ -61,6 +60,21 @@ data class BoardGeom(
 
     fun rankLabelRight(): Float = center(Point(rect.right, rect.top)).x + spacing * 0.70f
 }
+
+fun targetListLabel(targets: Set<Point>): String =
+    if (targets.isEmpty()) "目標: （未標）"
+    else "目標: " + targets.sorted().joinToString(", ") { it.label }
+
+fun targetFrameRect(center: Offset, spacing: Float): Rect {
+    val half = spacing * 0.50f
+    return Rect(center.x - half, center.y - half, center.x + half, center.y + half)
+}
+
+fun innerGridStroke(spacing: Float): Float = spacing * 0.035f
+
+fun realOuterStroke(spacing: Float): Float = spacing * 0.14f
+
+fun drawsThickOuterLine(kind: EdgeKind): Boolean = kind == EdgeKind.Real
 
 fun boardLayout(canvasWidth: Float, canvasHeight: Float, rect: BoardRect): BoardGeom {
     val fileGaps = (rect.right - rect.left).coerceAtLeast(1)
@@ -155,11 +169,12 @@ fun BoardView(
             }
             for (point in targets) {
                 val c = overlay.center(point)
-                drawCircle(
+                val frame = targetFrameRect(Offset(c.x, c.y), spacing)
+                drawRect(
                     color = Color(0xFFE53935),
-                    radius = spacing * 0.50f,
-                    center = Offset(c.x, c.y),
-                    style = Stroke(width = spacing * 0.10f),
+                    topLeft = frame.topLeft,
+                    size = frame.size,
+                    style = Stroke(width = spacing * 0.08f),
                 )
             }
             if (lastMove != null && lastMove in stones) {
@@ -182,12 +197,17 @@ fun BoardView(
             drawGrid(geom, edges)
             drawStars(geom)
             drawCoordinates(geom, measurer)
-            for (point in targets) {
-                val c = geom.center(point)
-                drawCircle(Color(0x66C62828), radius = spacing * 0.22f, center = c)
-            }
             for ((point, color) in stones) {
                 drawStone(geom.center(point), spacing * 0.46f, color)
+            }
+            for (point in targets) {
+                val frame = targetFrameRect(geom.center(point), spacing)
+                drawRect(
+                    color = Color(0xFFE53935),
+                    topLeft = frame.topLeft,
+                    size = frame.size,
+                    style = Stroke(width = spacing * 0.08f),
+                )
             }
             if (lastMove != null && lastMove in stones) {
                 val c = geom.center(lastMove)
@@ -222,9 +242,15 @@ private fun hitOnBoard(
 }
 
 private fun DrawScope.drawOverlayGrid(overlay: OverlayLayout, edges: Edges) {
-    val stroke = min(overlay.spacingX, overlay.spacingY) * 0.035f
-    val edgeStroke = min(overlay.spacingX, overlay.spacingY) * 0.07f
+    val spacing = min(overlay.spacingX, overlay.spacingY)
+    val stroke = innerGridStroke(spacing)
+    val edgeStroke = realOuterStroke(spacing)
     val ink = Color(0xCC3A2712)
+    val cut = Color(0xAA8D6E4C)
+    val dash = androidx.compose.ui.graphics.PathEffect.dashPathEffect(
+        floatArrayOf(spacing * 0.18f, spacing * 0.14f),
+        0f,
+    )
     for (file in overlay.rect.files) {
         val a = overlay.center(Point(file, overlay.rect.bottom))
         val b = overlay.center(Point(file, overlay.rect.top))
@@ -239,10 +265,22 @@ private fun DrawScope.drawOverlayGrid(overlay: OverlayLayout, edges: Edges) {
     val tr = overlay.center(Point(overlay.rect.right, overlay.rect.top))
     val bl = overlay.center(Point(overlay.rect.left, overlay.rect.bottom))
     val br = overlay.center(Point(overlay.rect.right, overlay.rect.bottom))
-    if (edges.top == EdgeKind.Real) drawLine(ink, Offset(tl.x, tl.y), Offset(tr.x, tr.y), strokeWidth = edgeStroke)
-    if (edges.bottom == EdgeKind.Real) drawLine(ink, Offset(bl.x, bl.y), Offset(br.x, br.y), strokeWidth = edgeStroke)
-    if (edges.left == EdgeKind.Real) drawLine(ink, Offset(tl.x, tl.y), Offset(bl.x, bl.y), strokeWidth = edgeStroke)
-    if (edges.right == EdgeKind.Real) drawLine(ink, Offset(tr.x, tr.y), Offset(br.x, br.y), strokeWidth = edgeStroke)
+    if (drawsThickOuterLine(edges.top)) drawLine(ink, Offset(tl.x, tl.y), Offset(tr.x, tr.y), strokeWidth = edgeStroke)
+    if (drawsThickOuterLine(edges.bottom)) drawLine(ink, Offset(bl.x, bl.y), Offset(br.x, br.y), strokeWidth = edgeStroke)
+    if (drawsThickOuterLine(edges.left)) drawLine(ink, Offset(tl.x, tl.y), Offset(bl.x, bl.y), strokeWidth = edgeStroke)
+    if (drawsThickOuterLine(edges.right)) drawLine(ink, Offset(tr.x, tr.y), Offset(br.x, br.y), strokeWidth = edgeStroke)
+    if (edges.top == EdgeKind.Wall) {
+        drawLine(cut, Offset(tl.x, tl.y), Offset(tr.x, tr.y), strokeWidth = stroke, pathEffect = dash)
+    }
+    if (edges.bottom == EdgeKind.Wall) {
+        drawLine(cut, Offset(bl.x, bl.y), Offset(br.x, br.y), strokeWidth = stroke, pathEffect = dash)
+    }
+    if (edges.left == EdgeKind.Wall) {
+        drawLine(cut, Offset(tl.x, tl.y), Offset(bl.x, bl.y), strokeWidth = stroke, pathEffect = dash)
+    }
+    if (edges.right == EdgeKind.Wall) {
+        drawLine(cut, Offset(tr.x, tr.y), Offset(br.x, br.y), strokeWidth = stroke, pathEffect = dash)
+    }
 }
 
 private fun DrawScope.drawOverlayCoordinates(overlay: OverlayLayout, measurer: TextMeasurer) {
@@ -278,25 +316,29 @@ private fun DrawScope.drawWood(grid: Rect, spacing: Float) {
 }
 
 private fun DrawScope.drawWalls(grid: Rect, edges: Edges, spacing: Float) {
-    val band = spacing * 0.28f
-    val wall = Color(0xFF4A3A28)
+    val ink = Color(0xFF8D6E4C)
+    val stroke = innerGridStroke(spacing)
+    val dash = androidx.compose.ui.graphics.PathEffect.dashPathEffect(
+        floatArrayOf(spacing * 0.18f, spacing * 0.14f),
+        0f,
+    )
     if (edges.left == EdgeKind.Wall) {
-        drawRect(wall.copy(alpha = 0.35f), topLeft = Offset(grid.left - band, grid.top - band), size = Size(band, grid.height + band * 2))
+        drawLine(ink, Offset(grid.left, grid.top), Offset(grid.left, grid.bottom), strokeWidth = stroke, pathEffect = dash)
     }
     if (edges.right == EdgeKind.Wall) {
-        drawRect(wall.copy(alpha = 0.35f), topLeft = Offset(grid.right, grid.top - band), size = Size(band, grid.height + band * 2))
+        drawLine(ink, Offset(grid.right, grid.top), Offset(grid.right, grid.bottom), strokeWidth = stroke, pathEffect = dash)
     }
     if (edges.top == EdgeKind.Wall) {
-        drawRect(wall.copy(alpha = 0.35f), topLeft = Offset(grid.left - band, grid.top - band), size = Size(grid.width + band * 2, band))
+        drawLine(ink, Offset(grid.left, grid.top), Offset(grid.right, grid.top), strokeWidth = stroke, pathEffect = dash)
     }
     if (edges.bottom == EdgeKind.Wall) {
-        drawRect(wall.copy(alpha = 0.35f), topLeft = Offset(grid.left - band, grid.bottom), size = Size(grid.width + band * 2, band))
+        drawLine(ink, Offset(grid.left, grid.bottom), Offset(grid.right, grid.bottom), strokeWidth = stroke, pathEffect = dash)
     }
 }
 
 private fun DrawScope.drawGrid(geom: BoardGeom, edges: Edges) {
-    val stroke = geom.spacing * 0.035f
-    val edgeStroke = geom.spacing * 0.07f
+    val stroke = innerGridStroke(geom.spacing)
+    val edgeStroke = realOuterStroke(geom.spacing)
     val ink = Color(0xFF3A2712)
     for (file in geom.rect.files) {
         val a = geom.center(Point(file, geom.rect.bottom))
@@ -312,10 +354,10 @@ private fun DrawScope.drawGrid(geom: BoardGeom, edges: Edges) {
     val tr = geom.center(Point(geom.rect.right, geom.rect.top))
     val bl = geom.center(Point(geom.rect.left, geom.rect.bottom))
     val br = geom.center(Point(geom.rect.right, geom.rect.bottom))
-    if (edges.top == EdgeKind.Real) drawLine(ink, tl, tr, strokeWidth = edgeStroke)
-    if (edges.bottom == EdgeKind.Real) drawLine(ink, bl, br, strokeWidth = edgeStroke)
-    if (edges.left == EdgeKind.Real) drawLine(ink, tl, bl, strokeWidth = edgeStroke)
-    if (edges.right == EdgeKind.Real) drawLine(ink, tr, br, strokeWidth = edgeStroke)
+    if (drawsThickOuterLine(edges.top)) drawLine(ink, tl, tr, strokeWidth = edgeStroke)
+    if (drawsThickOuterLine(edges.bottom)) drawLine(ink, bl, br, strokeWidth = edgeStroke)
+    if (drawsThickOuterLine(edges.left)) drawLine(ink, tl, bl, strokeWidth = edgeStroke)
+    if (drawsThickOuterLine(edges.right)) drawLine(ink, tr, br, strokeWidth = edgeStroke)
 }
 
 private fun DrawScope.drawStars(geom: BoardGeom) {
