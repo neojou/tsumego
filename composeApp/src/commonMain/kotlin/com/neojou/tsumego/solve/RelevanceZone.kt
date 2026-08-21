@@ -77,9 +77,7 @@ internal fun retainMustPlay(
 ): List<Action> {
     if (zone.isEmpty()) return listed.filter { it !in searched }
     return listed.filter { action ->
-        action !in searched && (
-            action is Action.Pass || (action is Action.Move && action.point in zone)
-        )
+        action !in searched && action is Action.Move && action.point in zone
     }
 }
 

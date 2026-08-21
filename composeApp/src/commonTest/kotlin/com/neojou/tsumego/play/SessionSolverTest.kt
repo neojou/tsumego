@@ -69,6 +69,29 @@ class SessionSolverTest {
     }
 
     @Test
+    fun searchPathsDoNotListPass() = runTest {
+        val session = testSession(
+            cornerProblem(
+                files = 3,
+                ranks = 3,
+                black = "A2,B1,C2",
+                white = "B2",
+                goal = Goal.Kill,
+                targets = "B2",
+            ),
+            solver = solver,
+        )
+        assertTrue(session.tryMove(pt("C3")))
+        session.waitForIdle()
+        val paths = session.state.value.searchPaths
+        assertTrue(paths.isNotEmpty(), "expected 搜尋路徑")
+        assertTrue(
+            paths.none { "停" in it },
+            paths.joinToString("\n"),
+        )
+    }
+
+    @Test
     fun failureShowsRefutationThenFailure() = runTest {
         val problem = cornerProblem(
             files = 3,
@@ -142,8 +165,8 @@ class SessionSolverTest {
     }
 
     @Test
-    fun sessionPassesOpeningWhiteLifeIntoEverySearch() = runTest {
-        var seen: Point? = null
+    fun sessionDoesNotPassOpeningWhiteLifeIntoSearch() = runTest {
+        var seen: Point? = pt("A1")
         val solver = object : Solver {
             override suspend fun solve(input: SolverInput): SolverResult {
                 seen = input.hintWhite
@@ -153,7 +176,7 @@ class SessionSolverTest {
         val session = testSession(openingWhiteLifeProblem(), solver = solver)
         assertTrue(session.tryMove(pt("B5")))
         session.waitForIdle()
-        assertEquals(pt("C5"), seen)
+        assertNull(seen)
     }
 
     @Test

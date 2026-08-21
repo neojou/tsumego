@@ -59,20 +59,10 @@ class AlphaBetaSolver(
     private val maxDepth: Int = 48,
 ) : Solver {
     override suspend fun solve(input: SolverInput): SolverResult {
-        val guess = rankMovesByPlayout(
-            position = input.position,
-            toPlay = StoneColor.White,
-            problem = input.problem,
-            candidates = whiteCandidatePoints(input.position, input.problem),
-            random = kotlin.random.Random.Default,
-            playouts = 16,
-        ).firstOrNull()
         val search = Search(
             problem = input.problem,
             budget = input.budget,
             onPath = input.onPath,
-            hintWhite = input.hintWhite,
-            guess = guess,
         )
         var proven: Force? = null
         var provenDepth = 0
@@ -114,11 +104,9 @@ private class Search(
     private val problem: Problem,
     private val budget: Budget,
     private val onPath: (String) -> Unit,
-    private val hintWhite: Point?,
-    private val guess: Point?,
 ) {
     private fun moves(position: Position, toPlay: StoneColor): List<Action> =
-        actions(position, toPlay, problem, hintWhite, guess)
+        actions(position, toPlay, problem)
 
     private val proven = HashMap<String, Force>()
     private val outcomes = HashMap<String, Outcome>()
@@ -363,7 +351,7 @@ internal fun actions(
             }
         }.thenBy { it },
     )
-    return ordered.map { Action.Move(it) } + Action.Pass
+    return ordered.map { Action.Move(it) }
 }
 
 internal fun immediateRefutations(

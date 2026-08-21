@@ -12,7 +12,6 @@ import com.neojou.tsumego.solve.Solver
 import com.neojou.tsumego.solve.SolverInput
 import com.neojou.tsumego.solve.SolverResult
 import com.neojou.tsumego.solve.UnlimitedBudget
-import com.neojou.tsumego.solve.findOpeningWhiteLife
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -63,7 +62,6 @@ class Session(
     private var consecutivePasses: Int = 0
     private val history = ArrayList<Ply>()
     private var searchJob: Job? = null
-    private val openingWhiteLife: Point? = findOpeningWhiteLife(problem)
 
     private val _state = MutableStateFlow(snapshotOf(PlayStatus.InProgress, lastMove = null, lastMoveIsPass = false))
     val state: StateFlow<PlaySnapshot> = _state.asStateFlow()
@@ -166,7 +164,6 @@ class Session(
                         onPathsComplete = {
                             _state.update { it.copy(pickingReply = true) }
                         },
-                        hintWhite = openingWhiteLife,
                     ),
                 )
             }

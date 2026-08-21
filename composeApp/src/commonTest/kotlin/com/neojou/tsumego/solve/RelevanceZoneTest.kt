@@ -33,11 +33,11 @@ class RelevanceZoneTest {
         val c5 = Action.Move(pt("C5"))
         val d1 = Action.Move(pt("D1"))
         val kept = retainMustPlay(
-            listed = listOf(a2, c5, d1, Action.Pass),
+            listed = listOf(a2, c5, d1),
             zone = zone,
             searched = setOf(a2),
         )
-        assertEquals(listOf(c5, Action.Pass), kept)
+        assertEquals(listOf(c5), kept)
     }
 
     @Test
