@@ -26,7 +26,7 @@ class DiagramDraftTest {
         assertEquals(Goal.Kill, draft.goal)
         assertEquals(problem.targets, draft.targets)
         val edited = draft.copy(goal = Goal.KoKill)
-        assertEquals(Goal.KoKill, edited.toProblem().goal)
+        assertEquals(Goal.Kill, edited.toProblem().goal)
         assertEquals(problem.stones, edited.toProblem().stones)
     }
 
@@ -44,17 +44,22 @@ class DiagramDraftTest {
             edges = problem.edges,
             stones = problem.stones,
             goal = Goal.Live,
-            targets = emptySet(),
+            targets = setOf(pt("C2")),
         )
         val reader = DiagramReader { _, _ -> base }
         val draft = readDiagram(reader, byteArrayOf(1, 2, 3), StoneColor.White)
         assertEquals(StoneColor.White, draft.stones[pt("A2")])
         assertEquals(StoneColor.White, draft.stones[pt("B1")])
         assertEquals(StoneColor.Black, draft.stones[pt("C2")])
-        assertEquals(emptySet(), draft.targets)
-        val marked = draft.copy(goal = Goal.Kill, targets = setOf(pt("A2")))
+        assertEquals(Goal.Kill, draft.goal)
+        assertEquals(setOf(pt("C2")), draft.targets)
+        assertNotNull(draft.validationError())
+        assertTrue(draft.validationError()!!.contains("白"), draft.validationError())
+        val marked = draft.copy(targets = setOf(pt("A2")))
         assertEquals(pt("A2"), marked.targets.single())
         assertEquals(StoneColor.White, marked.stones[pt("A2")])
+        assertEquals(Goal.Kill, marked.toProblem().goal)
+        assertNull(marked.validationError())
     }
 
     @Test
@@ -99,10 +104,10 @@ class DiagramDraftTest {
             goal = Goal.Live,
             targets = "A1,A2",
         )
-        var draft = ConfirmDraft(null, problem.rect, problem.edges, problem.stones, goal = Goal.Live)
-        draft = draft.applyClick(pt("A1"), targetMode = true)
-        draft = draft.applyClick(pt("E2"), targetMode = true)
-        assertEquals(setOf(pt("A1"), pt("A2"), pt("E2"), pt("E3")), draft.targets)
+        var draft = ConfirmDraft(null, problem.rect, problem.edges, problem.stones)
+        draft = draft.applyClick(pt("C2"), targetMode = true)
+        assertEquals(setOf(pt("C2")), draft.targets)
+        assertEquals(Goal.Kill, draft.goal)
         assertEquals(null, draft.validationError())
     }
 
@@ -114,14 +119,14 @@ class DiagramDraftTest {
             goal = Goal.Live,
             targets = "A2",
         )
-        var draft = ConfirmDraft(null, problem.rect, problem.edges, problem.stones, goal = Goal.Live)
+        var draft = ConfirmDraft(null, problem.rect, problem.edges, problem.stones)
         draft = draft.applyClick(pt("B2"), targetMode = false)
         assertTrue(draft.targets.isEmpty())
         assertNotNull(draft.validationError())
     }
 
     @Test
-    fun confirmRejectsSekiWithoutBothColors() {
+    fun confirmRejectsBlackTargetsOnKill() {
         val problem = cornerProblem(
             black = "A2",
             white = "C2",
@@ -136,8 +141,16 @@ class DiagramDraftTest {
             goal = Goal.Seki,
             targets = setOf(pt("A2")),
         )
+        assertEquals(Goal.Kill, draft.toProblem().goal)
         assertNotNull(draft.validationError())
-        assertTrue(draft.validationError()!!.contains("雙活"))
+        assertTrue(draft.validationError()!!.contains("白"), draft.validationError())
+    }
+
+    @Test
+    fun emptyDraftIsKill() {
+        val draft = emptyDraft(null)
+        assertEquals(Goal.Kill, draft.goal)
+        assertEquals(Goal.Kill, draft.toProblem().goal)
     }
 
     @Test

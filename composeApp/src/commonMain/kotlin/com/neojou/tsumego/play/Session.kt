@@ -6,6 +6,7 @@ import com.neojou.tsumego.board.Problem
 import com.neojou.tsumego.board.StoneColor
 import com.neojou.tsumego.board.isSuccess
 import com.neojou.tsumego.classify.classify
+import com.neojou.tsumego.classify.isAwayFromTargets
 import com.neojou.tsumego.solve.Action
 import com.neojou.tsumego.solve.AlphaBetaSolver
 import com.neojou.tsumego.solve.Solver
@@ -52,6 +53,12 @@ private data class Ply(
     val passesBefore: Int,
 )
 
+private data class CachedReply(
+    val result: SolverResult,
+    val paths: List<String>,
+    val pathCount: Int,
+)
+
 class Session(
     val problem: Problem,
     private val solver: Solver = AlphaBetaSolver(),
@@ -62,6 +69,7 @@ class Session(
     private var consecutivePasses: Int = 0
     private val history = ArrayList<Ply>()
     private var searchJob: Job? = null
+    private val replyCache = HashMap<String, CachedReply>()
 
     private val _state = MutableStateFlow(snapshotOf(PlayStatus.InProgress, lastMove = null, lastMoveIsPass = false))
     val state: StateFlow<PlaySnapshot> = _state.asStateFlow()
@@ -104,7 +112,7 @@ class Session(
         position = Position.initial(problem)
         consecutivePasses = 0
         history.clear()
-        publish(PlayStatus.InProgress, lastMove = null, lastMoveIsPass = false, clearPaths = false)
+        publish(PlayStatus.InProgress, lastMove = null, lastMoveIsPass = false, clearPaths = true)
         return true
     }
 
@@ -133,15 +141,34 @@ class Session(
         }
     }
 
+    private fun searchKey(pos: Position, passes: Int): String =
+        "${pos.key}|$passes|${pos.past.sorted().joinToString()}"
+
     private fun launchSearch() {
         searchJob?.cancel()
+        val frozenPosition = position
+        val frozenPasses = consecutivePasses
+        val lastBlack = history.lastOrNull()
+        val lastBlackMove = lastBlack?.black as? Action.Move
+        val blackPlayedAway = lastBlackMove != null &&
+            isAwayFromTargets(lastBlack.positionBefore, lastBlackMove.point, problem.targets)
+        val key = searchKey(frozenPosition, frozenPasses)
+        replyCache[key]?.let { cached ->
+            _state.update { old ->
+                old.copy(
+                    searchPaths = cached.paths,
+                    searchPathCount = cached.pathCount,
+                    pickingReply = false,
+                )
+            }
+            applySolverResult(cached.result)
+            return
+        }
         publish(
             PlayStatus.WaitingForReply,
             lastPoint(history.lastOrNull()?.black),
             history.lastOrNull()?.black is Action.Pass,
         )
-        val frozenPosition = position
-        val frozenPasses = consecutivePasses
         searchJob = scope.launch {
             val result = withContext(searchDispatcher) {
                 solver.solve(
@@ -149,6 +176,7 @@ class Session(
                         problem = problem,
                         position = frozenPosition,
                         consecutivePasses = frozenPasses,
+                        blackPlayedAway = blackPlayedAway,
                         budget = UnlimitedBudget,
                         onPath = { line ->
                             _state.update { old ->
@@ -166,6 +194,10 @@ class Session(
                         },
                     ),
                 )
+            }
+            if (result !is SolverResult.Timeout) {
+                val snap = _state.value
+                replyCache[key] = CachedReply(result, snap.searchPaths, snap.searchPathCount)
             }
             applySolverResult(result)
         }

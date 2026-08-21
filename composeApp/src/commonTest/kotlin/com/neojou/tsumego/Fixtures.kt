@@ -8,6 +8,8 @@ import com.neojou.tsumego.board.Point
 import com.neojou.tsumego.board.Problem
 import com.neojou.tsumego.board.StoneColor
 import com.neojou.tsumego.board.lowerLeftCorner
+import com.neojou.tsumego.library.ProblemLibrary
+import com.neojou.tsumego.library.ProblemLoad
 import com.neojou.tsumego.play.Session
 import com.neojou.tsumego.solve.Action
 import com.neojou.tsumego.solve.Solver
@@ -115,6 +117,14 @@ const val SMALL_TRICK_JSON = """
     "targets": ["R17", "R18", "S16", "T18"]
 }
 """
+
+fun smallTrickPlayable(): Problem {
+    val loaded = ProblemLibrary.decode(SMALL_TRICK_JSON)
+    check(loaded is ProblemLoad.Ok) { loaded.toString() }
+    return loaded.problem
+        .copy(targets = setOf(pt("R17"), pt("R18"), pt("T18")))
+        .withOpenWallMargin()
+}
 
 object ImmediateTimeoutSolver : Solver {
     override suspend fun solve(input: SolverInput): SolverResult = SolverResult.Timeout

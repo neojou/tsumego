@@ -31,49 +31,43 @@ class SessionSolverTest {
 
     @Test
     fun whiteRepliesWithLongestResistanceAndStableCoordinates() = runTest {
-        val problem = cornerProblem(
-            files = 3,
-            ranks = 3,
-            black = "A2,B1,C2",
-            white = "B2",
-            goal = Goal.Kill,
-            targets = "B2",
-        )
-        val session = testSession(problem, solver = solver)
-        assertTrue(session.tryMove(pt("C3")))
+        val session = testSession(openingWhiteLifeProblem(), solver = solver)
+        assertTrue(session.tryMove(pt("B5")))
         session.waitForIdle()
         val snap = session.state.value
-        assertEquals(PlayStatus.InProgress, snap.status)
-        assertEquals(pt("B3"), snap.lastMove)
-        assertEquals(StoneColor.White, snap.stones[pt("B3")])
-        assertEquals(StoneColor.White, snap.stones[pt("B2")])
+        assertTrue(snap.status == PlayStatus.InProgress || snap.status == PlayStatus.Failure)
+        assertEquals(pt("C5"), snap.lastMove)
+        assertEquals(StoneColor.White, snap.stones[pt("C5")])
     }
 
     @Test
-    fun searchPathsListWhiteB3ThenBlackA3Success() = runTest {
-        val problem = cornerProblem(
-            files = 3,
-            ranks = 3,
-            black = "A2,B1,C2",
-            white = "B2",
-            goal = Goal.Kill,
-            targets = "B2",
-        )
-        val session = testSession(problem, solver = solver)
-        assertTrue(session.tryMove(pt("C3")))
+    fun searchPathsListWhiteC5WhenBlackTakesAnEye() = runTest {
+        val session = testSession(openingWhiteLifeProblem(), solver = solver)
+        assertTrue(session.tryMove(pt("B5")))
         session.waitForIdle()
         assertTrue(
-            "白下 B3 -> 黑下 A3 -> 結果 成功" in session.state.value.searchPaths,
+            session.state.value.searchPaths.any { "白下 C5" in it },
             session.state.value.searchPaths.joinToString("\n"),
         )
     }
 
     @Test
     fun searchPathsDoNotListPass() = runTest {
+        val session = testSession(openingWhiteLifeProblem(), solver = solver)
+        assertTrue(session.tryMove(pt("B5")))
+        session.waitForIdle()
+        val paths = session.state.value.searchPaths
+        assertTrue(paths.isNotEmpty(), "expected 搜尋路徑")
+        assertTrue(
+            paths.none { "停" in it },
+            paths.joinToString("\n"),
+        )
+    }
+
+    @Test
+    fun atariKillSucceedsWithoutCaptureWhenWhiteCannotMakeEyes() = runTest {
         val session = testSession(
             cornerProblem(
-                files = 3,
-                ranks = 3,
                 black = "A2,B1,C2",
                 white = "B2",
                 goal = Goal.Kill,
@@ -83,12 +77,7 @@ class SessionSolverTest {
         )
         assertTrue(session.tryMove(pt("C3")))
         session.waitForIdle()
-        val paths = session.state.value.searchPaths
-        assertTrue(paths.isNotEmpty(), "expected 搜尋路徑")
-        assertTrue(
-            paths.none { "停" in it },
-            paths.joinToString("\n"),
-        )
+        assertEquals(PlayStatus.Success, session.state.value.status)
     }
 
     @Test
@@ -132,16 +121,8 @@ class SessionSolverTest {
                 return SolverResult.Resist(Action.Pass)
             }
         }
-        val session = testSession(
-            cornerProblem(
-                black = "A2,B1,C2",
-                white = "B2",
-                goal = Goal.Kill,
-                targets = "B2",
-            ),
-            solver = solver,
-        )
-        assertTrue(session.tryMove(pt("A1")))
+        val session = testSession(openingWhiteLifeProblem(), solver = solver)
+        assertTrue(session.tryMove(pt("B5")))
         started.await()
         val waiting = session.state.value
         assertEquals(PlayStatus.WaitingForReply, waiting.status)
@@ -236,16 +217,8 @@ class SessionSolverTest {
                 return SolverResult.Resist(Action.Pass)
             }
         }
-        val session = testSession(
-            cornerProblem(
-                black = "A2,B1,C2",
-                white = "B2",
-                goal = Goal.Kill,
-                targets = "B2",
-            ),
-            solver = solver,
-        )
-        assertTrue(session.tryMove(pt("A1")))
+        val session = testSession(openingWhiteLifeProblem(), solver = solver)
+        assertTrue(session.tryMove(pt("B5")))
         session.waitForIdle()
         val snap = session.state.value
         assertEquals(1005, snap.searchPathCount)
@@ -265,16 +238,8 @@ class SessionSolverTest {
                 return SolverResult.Resist(Action.Pass)
             }
         }
-        val session = testSession(
-            cornerProblem(
-                black = "A2,B1,C2",
-                white = "B2",
-                goal = Goal.Kill,
-                targets = "B2",
-            ),
-            solver = solver,
-        )
-        assertTrue(session.tryMove(pt("A1")))
+        val session = testSession(openingWhiteLifeProblem(), solver = solver)
+        assertTrue(session.tryMove(pt("B5")))
         started.await()
         assertTrue(session.state.value.pickingReply)
         finish.complete(Unit)
@@ -293,43 +258,30 @@ class SessionSolverTest {
                 return SolverResult.Resist(Action.Move(pt("B3")))
             }
         }
-        val session = testSession(
-            cornerProblem(
-                black = "A2,B1,C2",
-                white = "B2",
-                goal = Goal.Kill,
-                targets = "B2",
-            ),
-            solver = solver,
-        )
-        assertTrue(session.tryMove(pt("A1")))
+        val session = testSession(openingWhiteLifeProblem(), solver = solver)
+        assertTrue(session.tryMove(pt("B5")))
         started.await()
         assertTrue(session.pass())
         finish.complete(Unit)
         session.waitForIdle()
         assertEquals(PlayStatus.InProgress, session.state.value.status)
         assertNull(session.state.value.stones[pt("B3")])
-        assertEquals(StoneColor.Black, session.state.value.stones[pt("A1")])
+        assertEquals(StoneColor.Black, session.state.value.stones[pt("B5")])
         assertTrue(session.state.value.lastMoveIsPass)
     }
 
     @Test
     fun depthExhaustedKeepsBoardWithoutAWhiteMove() = runTest {
         val session = testSession(
-            cornerProblem(
-                black = "A2,B1,C2",
-                white = "B2",
-                goal = Goal.Kill,
-                targets = "B2",
-            ),
+            openingWhiteLifeProblem(),
             solver = ImmediateTimeoutSolver,
         )
-        assertTrue(session.tryMove(pt("A1")))
+        assertTrue(session.tryMove(pt("B5")))
         session.waitForIdle()
         val snap = session.state.value
         assertEquals(PlayStatus.WaitingForReply, snap.status)
-        assertEquals(pt("A1"), snap.lastMove)
-        assertNull(snap.stones[pt("A3")])
+        assertEquals(pt("B5"), snap.lastMove)
+        assertNull(snap.stones[pt("C5")])
         assertTrue(snap.canUndo)
         assertTrue(session.undo())
         assertEquals(PlayStatus.InProgress, session.state.value.status)

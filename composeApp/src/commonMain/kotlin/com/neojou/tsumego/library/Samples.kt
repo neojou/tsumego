@@ -19,7 +19,6 @@ object Samples {
     val wallAndEdge: Problem = wallAndEdgeProblem()
 
     val all: List<SampleProblem> = listOf(
-        SampleProblem("live-corner", "角上做活", liveCorner),
         SampleProblem("small-kill", "小殺棋", smallKill),
         SampleProblem("wall-and-edge", "牆與真盤邊", wallAndEdge),
     )

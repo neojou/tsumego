@@ -14,7 +14,7 @@ data class ConfirmDraft(
     val rect: BoardRect,
     val edges: Edges,
     val stones: Map<Point, StoneColor>,
-    val goal: Goal = Goal.Live,
+    val goal: Goal = Goal.Kill,
     val targets: Set<Point> = emptySet(),
     val imageGrid: ImageGrid? = null,
 ) {
@@ -56,7 +56,7 @@ data class ConfirmDraft(
         rect = rect,
         edges = edges,
         stones = stones,
-        goal = goal,
+        goal = Goal.Kill,
         targets = targets,
     )
 }
@@ -107,5 +107,6 @@ fun Problem.toConfirmDraft(imageBytes: ByteArray? = null): ConfirmDraft = Confir
 
 fun readDiagram(reader: DiagramReader, image: ByteArray, diagramFirst: StoneColor): ConfirmDraft {
     val draft = reader.read(image, diagramFirst)
-    return if (diagramFirst == StoneColor.White) draft.flipped() else draft
+    val oriented = if (diagramFirst == StoneColor.White) draft.flipped() else draft
+    return oriented.copy(goal = Goal.Kill)
 }

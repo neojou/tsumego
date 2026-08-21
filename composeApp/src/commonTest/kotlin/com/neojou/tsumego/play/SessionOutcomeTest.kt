@@ -2,7 +2,9 @@ package com.neojou.tsumego.play
 
 import com.neojou.tsumego.board.EdgeKind
 import com.neojou.tsumego.board.Goal
+import com.neojou.tsumego.board.Outcome
 import com.neojou.tsumego.board.StoneColor
+import com.neojou.tsumego.board.isSuccess
 import com.neojou.tsumego.boxedProblem
 import com.neojou.tsumego.cornerProblem
 import com.neojou.tsumego.library.Samples
@@ -77,6 +79,35 @@ class SessionOutcomeTest {
     }
 
     @Test
+    fun killDoesNotSucceedOnKoOutcomes() {
+        assertTrue(!Goal.Kill.isSuccess(Outcome.KoKill))
+        assertTrue(!Goal.Kill.isSuccess(Outcome.KoLive))
+        assertTrue(!Goal.Kill.isSuccess(Outcome.Seki))
+        assertTrue(!Goal.Kill.isSuccess(Outcome.UnconditionalLive))
+        assertTrue(Goal.Kill.isSuccess(Outcome.UnconditionalDead))
+    }
+
+    @Test
+    fun killFailsOnSekiShape() = runTest {
+        val kill = boxedProblem(
+            left = "A",
+            right = "E",
+            bottom = 1,
+            top = 3,
+            black = "A1,A2,A3,B1,B3",
+            white = "D1,D3,E1,E2,E3",
+            goal = Goal.Kill,
+            targets = "A1,A2,A3,B1,B3,D1,D3,E1,E2,E3",
+            leftEdge = EdgeKind.Real,
+            bottomEdge = EdgeKind.Real,
+        )
+        val session = testSession(kill)
+        assertTrue(session.pass())
+        session.waitForIdle()
+        assertEquals(PlayStatus.Failure, session.state.value.status)
+    }
+
+    @Test
     fun liveProblemDoesNotSucceedOnSekiShape() = runTest {
         val live = boxedProblem(
             left = "A",
@@ -110,25 +141,25 @@ class SessionOutcomeTest {
 
     @Test
     fun killRequiresEveryTargetStringDead() = runTest {
-        val twoGroups = cornerProblem(
-            files = 5,
-            ranks = 3,
-            black = "A2,B1,C2,D1,E2",
-            white = "B2,D2",
+        val twoGroups = boxedProblem(
+            left = "A",
+            right = "H",
+            bottom = 1,
+            top = 5,
+            black = "F3,G2,H3",
+            white = "A2,A3,A4,B2,B4,C2,C3,C4,D2,D4,E2,E3,E4,G3",
             goal = Goal.Kill,
-            targets = "B2,D2",
+            targets = "A2,A3,A4,B2,B4,C2,C3,C4,D2,D4,E2,E3,E4,G3",
         )
         val session = testSession(twoGroups)
-        assertTrue(session.tryMove(pt("B3")))
+        assertTrue(session.tryMove(pt("G4")))
         session.waitForIdle()
-        assertNull(session.state.value.stones[pt("B2")])
-        assertEquals(StoneColor.White, session.state.value.stones[pt("D2")])
-        assertTrue(session.state.value.status == PlayStatus.InProgress || session.state.value.status == PlayStatus.Failure)
-        if (session.state.value.status == PlayStatus.InProgress) {
-            assertTrue(session.tryMove(pt("D3")))
-            session.waitForIdle()
-            assertEquals(PlayStatus.Success, session.state.value.status)
-        }
+        assertNull(session.state.value.stones[pt("G3")])
+        assertEquals(StoneColor.White, session.state.value.stones[pt("C3")])
+        assertTrue(
+            session.state.value.status == PlayStatus.InProgress ||
+                session.state.value.status == PlayStatus.Failure,
+        )
     }
 
     @Test

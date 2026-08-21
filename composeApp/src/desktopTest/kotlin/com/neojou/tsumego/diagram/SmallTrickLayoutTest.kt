@@ -78,15 +78,17 @@ class SmallTrickLayoutTest {
     }
 
     @Test
-    fun whiteFirstCanMarkTwoBlackStringsAndConfirmLive() {
+    fun whiteFirstCanMarkWhiteStringsAndConfirmKill() {
         var draft = readDiagram(DesktopDiagramReader(), bytes, StoneColor.White)
-            .copy(goal = com.neojou.tsumego.board.Goal.Live)
-        draft = draft.applyClick(pt("Q19"), targetMode = true)
-        draft = draft.applyClick(pt("P15"), targetMode = true)
-        assertTrue(pt("Q19") in draft.targets)
-        assertTrue(pt("P15") in draft.targets)
-        assertTrue(draft.targets.size > 1)
+        assertEquals(com.neojou.tsumego.board.Goal.Kill, draft.goal)
+        draft = draft.applyClick(pt("T18"), targetMode = true)
+        assertTrue(pt("T18") in draft.targets)
+        assertEquals(StoneColor.White, draft.stones[pt("T18")])
         assertEquals(null, draft.validationError())
+        assertEquals(com.neojou.tsumego.board.Goal.Kill, draft.toProblem().goal)
+        val blackMarked = draft.applyClick(pt("Q19"), targetMode = true)
+        assertNotNull(blackMarked.validationError())
+        assertTrue(blackMarked.validationError()!!.contains("白"))
     }
 
     @Test

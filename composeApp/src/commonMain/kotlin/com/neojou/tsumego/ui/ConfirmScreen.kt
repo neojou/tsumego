@@ -25,7 +25,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.neojou.tsumego.board.EdgeKind
-import com.neojou.tsumego.board.Goal
 import com.neojou.tsumego.board.Point
 import com.neojou.tsumego.diagram.ConfirmDraft
 
@@ -42,7 +41,7 @@ fun ConfirmScreen(
 
     Column(Modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            GoalPicker(draft.goal) { onChange(draft.copy(goal = it)) }
+            Text("題型：殺棋", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(end = 8.dp))
             FilterChip(
                 selected = targetMode,
                 onClick = { targetMode = !targetMode },
@@ -112,23 +111,6 @@ fun ConfirmScreen(
 }
 
 @Composable
-private fun GoalPicker(goal: Goal, onPick: (Goal) -> Unit) {
-    var expanded by remember { mutableStateOf(false) }
-    TextButton(onClick = { expanded = true }) { Text("題型：${goal.label()}") }
-    DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-        Goal.entries.forEach { g ->
-            DropdownMenuItem(
-                text = { Text(g.label()) },
-                onClick = {
-                    expanded = false
-                    onPick(g)
-                },
-            )
-        }
-    }
-}
-
-@Composable
 private fun EdgeChip(label: String, kind: EdgeKind, onToggle: (EdgeKind) -> Unit) {
     FilterChip(
         selected = kind == EdgeKind.Real,
@@ -152,12 +134,4 @@ private fun BoundPicker(label: String, current: String, options: List<String>, o
             )
         }
     }
-}
-
-fun Goal.label(): String = when (this) {
-    Goal.Live -> "做活"
-    Goal.Kill -> "殺棋"
-    Goal.Seki -> "雙活題"
-    Goal.KoLive -> "劫活"
-    Goal.KoKill -> "劫殺"
 }

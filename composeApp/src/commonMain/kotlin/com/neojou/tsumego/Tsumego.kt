@@ -41,6 +41,7 @@ import androidx.compose.ui.window.Dialog
 import com.neojou.tools.LogLevel
 import com.neojou.tools.MyLog
 import com.neojou.tools.ui.menu.MyTopMenuBar
+import com.neojou.tools.ui.menu.MyTopMenuItem
 import com.neojou.tsumego.board.Problem
 import com.neojou.tsumego.board.StoneColor
 import com.neojou.tsumego.diagram.ConfirmDraft
@@ -52,6 +53,7 @@ import com.neojou.tsumego.io.platformDiagramReader
 import com.neojou.tsumego.io.saveProblemText
 import com.neojou.tsumego.library.ProblemLibrary
 import com.neojou.tsumego.library.ProblemLoad
+import com.neojou.tsumego.library.Samples
 import com.neojou.tsumego.play.PlayStatus
 import com.neojou.tsumego.play.Session
 import com.neojou.tsumego.play.numberedSearchPaths
@@ -62,7 +64,6 @@ import kotlinx.coroutines.delay
 import kotlin.time.TimeSource
 import com.neojou.tsumego.ui.BoardView
 import com.neojou.tsumego.ui.ConfirmScreen
-import com.neojou.tsumego.ui.label
 import kotlinx.coroutines.launch
 
 private const val TAG = "Tsumego"
@@ -118,6 +119,13 @@ fun Tsumego() {
             draft = problem.toConfirmDraft()
         },
         onAbout = { showAbout = true },
+        sampleItems = Samples.all.map { sample ->
+            MyTopMenuItem(
+                id = "sample-${sample.id}",
+                label = sample.name,
+                onClick = { startProblem(sample.problem) },
+            )
+        },
     )
 
     LaunchedEffect(Unit) {

@@ -94,6 +94,7 @@ object ProblemLibrary {
             targets.add(point)
         }
         val goal = parseGoal(dto.goal) ?: return ProblemLoad.Err("題型不合法：${dto.goal}")
+        if (goal != Goal.Kill) return ProblemLoad.Err("v1 題型只開殺棋")
         val problem = Problem(rect, edges, stones, goal, targets)
         val error = problem.validationError()
         return if (error != null) ProblemLoad.Err(error) else ProblemLoad.Ok(problem)

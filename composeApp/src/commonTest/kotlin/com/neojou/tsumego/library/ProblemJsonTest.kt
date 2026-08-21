@@ -5,6 +5,7 @@ import com.neojou.tsumego.board.Point
 import com.neojou.tsumego.board.StoneColor
 import com.neojou.tsumego.cornerProblem
 import com.neojou.tsumego.play.PlayStatus
+import com.neojou.tsumego.play.playHeading
 import com.neojou.tsumego.pt
 import com.neojou.tsumego.testSession
 import kotlinx.coroutines.test.runTest
@@ -39,16 +40,15 @@ class ProblemJsonTest {
     fun encodedFileIsAlwaysBlackToPlay() {
         val text = ProblemLibrary.encode(
             cornerProblem(
-                black = "A1,A2,B1",
-                white = "C3",
-                goal = Goal.Live,
-                targets = "A1,A2,B1",
+                black = "A2,B1,C2",
+                white = "B2",
+                goal = Goal.Kill,
+                targets = "B2",
             ),
         )
         assertTrue("toPlay" !in text || "\"toPlay\": \"black\"" in text || "\"toPlay\":\"black\"" in text)
-        assertTrue("white" !in text.substringAfter("\"goal\"").substringBefore("targets") || true)
         val ok = assertIs<ProblemLoad.Ok>(ProblemLibrary.decode(text))
-        assertEquals(StoneColor.Black, ok.problem.stones[pt("A1")])
+        assertEquals(StoneColor.Black, ok.problem.stones[pt("A2")])
     }
 
     @Test
@@ -58,18 +58,17 @@ class ProblemJsonTest {
     }
 
     @Test
-    fun rejectsSekiWithOnlyOneColorOfTargets() {
+    fun rejectsNonKillGoalSeki() {
         val problem = cornerProblem(
             black = "A2",
             white = "C2",
             goal = Goal.Kill,
             targets = "C2",
         )
-        val text = ProblemLibrary.encode(problem)
-            .replace("\"kill\"", "\"seki\"")
-            .replace("\"C2\"", "\"A2\"")
+        val text = ProblemLibrary.encode(problem).replace("\"kill\"", "\"seki\"")
         val err = ProblemLibrary.decode(text)
-        assertTrue(assertIs<ProblemLoad.Err>(err).message.contains("雙活"))
+        val message = assertIs<ProblemLoad.Err>(err).message
+        assertTrue(message.contains("題型") && message.contains("殺棋"), message)
     }
 
     @Test
@@ -86,7 +85,7 @@ class ProblemJsonTest {
     }
 
     @Test
-    fun liveProblemRequiresBlackTargets() {
+    fun rejectsNonKillGoalLive() {
         val problem = cornerProblem(
             black = "A2",
             white = "B2",
@@ -95,7 +94,40 @@ class ProblemJsonTest {
         )
         val text = ProblemLibrary.encode(problem).replace("\"kill\"", "\"live\"")
         val err = ProblemLibrary.decode(text)
-        assertIs<ProblemLoad.Err>(err)
+        val message = assertIs<ProblemLoad.Err>(err).message
+        assertTrue(message.contains("題型") && message.contains("殺棋"), message)
+    }
+
+    @Test
+    fun rejectsNonKillGoalKoLiveAndKoKill() {
+        val kill = ProblemLibrary.encode(
+            cornerProblem(
+                black = "A2,B1,C2",
+                white = "B2",
+                goal = Goal.Kill,
+                targets = "B2",
+            ),
+        )
+        for (goal in listOf("koLive", "koKill")) {
+            val err = ProblemLibrary.decode(kill.replace("\"kill\"", "\"$goal\""))
+            val message = assertIs<ProblemLoad.Err>(err).message
+            assertTrue(message.contains("題型") && message.contains("殺棋"), "$goal -> $message")
+        }
+    }
+
+    @Test
+    fun decodedKillHeadingIsBlackFirstKillWhite() {
+        val text = ProblemLibrary.encode(Samples.smallKill)
+        val ok = assertIs<ProblemLoad.Ok>(ProblemLibrary.decode(text))
+        assertEquals(Goal.Kill, ok.problem.goal)
+        assertEquals("黑先殺白", ok.problem.goal.playHeading())
+    }
+
+    @Test
+    fun listedSamplesAreKillOnly() {
+        assertTrue(Samples.all.none { "做活" in it.name })
+        assertTrue(Samples.all.all { it.problem.goal == Goal.Kill })
+        assertTrue(Samples.all.any { it.name == "小殺棋" })
     }
 
     @Test

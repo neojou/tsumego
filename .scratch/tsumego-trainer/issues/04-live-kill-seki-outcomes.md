@@ -1,6 +1,6 @@
 # 04: 做活／殺棋／雙活的成敗
 
-**What to build:** 在 03 的對局上接上分類：對目標棋串依序判定提淨、Benson 無條件活、雙活、雙方已停則剩餘當死。做活／殺棋／雙活題會宣告成功或失敗。棄子不在目標棋串內則做活仍可過；多串全部（AND）達成才過。連續停後仍未定則失敗。白仍是停的 stub，所以 demo 是「把目標白子提淨 → 殺棋成功」或「停後 Benson 活 → 做活成功」，還沒有智能應手。失敗時若 stub 沒有白棋可下，不必硬造反駁手。
+**What to build:** 在 03 的對局上接上分類：對目標棋串依序判定提淨、Benson 無條件活、雙活、雙方已停則剩餘當死、目標色連續落子仍到不了 Benson 則死。做活／殺棋／雙活題會宣告成功或失敗。棄子不在目標棋串內則做活仍可過；多串全部（AND）達成才過。連續停後仍未定則失敗。白仍是停的 stub，所以 demo 是「把目標白子提淨 → 殺棋成功」或「停後 Benson 活 → 做活成功」，還沒有智能應手。失敗時若 stub 沒有白棋可下，不必硬造反駁手。
 
 **Blocked by:** 03: 在該題上合法對局
 
@@ -10,9 +10,10 @@
 - [x] Benson 活 → 無條件活；做活成功；雙活或死則做活失敗
 - [x] 雙方目標非活非死、有共氣且停後仍如此 → 雙活；僅雙活題成功
 - [x] 雙方連續停且不是活／雙活／劫活 → 無條件死；仍未定 → 失敗
+- [x] 目標色連續落子、對方脫先仍到不了 Benson → 無條件死（子可留在盤上）
 - [x] 做活的棄子被提不導致失敗；多串目標必須全部達成
 - [x] 對局測試覆蓋上述終局，不鑽分類器內部結構
 
 ## Answer
 
-終局 order is ADR-0014. `SessionOutcomeTest` covers 殺棋 / 做活 / 雙活, sacrifice, and multi-string AND through `Session`.
+終局 order is ADR-0014. `SessionOutcomeTest` covers 殺棋 / 做活 / 雙活, sacrifice, and multi-string AND through `Session`。`DeadShapeTest` 覆蓋兩眼做不成則殺棋成功，以及 small_trick 封死後不必再填。剩餘目標已 Benson 活時不算整題無條件死。

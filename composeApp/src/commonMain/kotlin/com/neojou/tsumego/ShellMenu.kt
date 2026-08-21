@@ -6,9 +6,11 @@ fun fileMenuItems(
     saveEnabled: Boolean,
     onOpen: () -> Unit,
     onSave: () -> Unit,
+    sampleItems: List<MyTopMenuItem> = emptyList(),
 ): List<MyTopMenuItem> = listOf(
     MyTopMenuItem(id = "open", label = "Open", onClick = onOpen),
     MyTopMenuItem(id = "save", label = "Save", enabled = saveEnabled, onClick = onSave),
+    MyTopMenuItem(id = "samples", label = "Samples", children = sampleItems),
 )
 
 fun shellMenuBarItems(
@@ -20,6 +22,7 @@ fun shellMenuBarItems(
     onSave: () -> Unit,
     onEdit: () -> Unit,
     onAbout: () -> Unit,
+    sampleItems: List<MyTopMenuItem> = emptyList(),
 ): List<MyTopMenuItem> = listOf(
     MyTopMenuItem(
         id = "input",
@@ -32,7 +35,12 @@ fun shellMenuBarItems(
     MyTopMenuItem(
         id = "file",
         label = "File",
-        children = fileMenuItems(saveEnabled = saveEnabled, onOpen = onOpen, onSave = onSave),
+        children = fileMenuItems(
+            saveEnabled = saveEnabled,
+            onOpen = onOpen,
+            onSave = onSave,
+            sampleItems = sampleItems,
+        ),
     ),
     MyTopMenuItem(id = "edit", label = "Edit", enabled = editEnabled, onClick = onEdit),
     MyTopMenuItem(id = "about", label = "About", onClick = onAbout),

@@ -37,14 +37,20 @@ class ShellMenuTest {
     }
 
     @Test
-    fun fileMenuIsOpenAndSaveOnly() {
-        val items = fileMenuItems(saveEnabled = true, onOpen = {}, onSave = {})
-        assertEquals(listOf("Open", "Save"), items.map { it.label })
+    fun fileMenuListsKillSamplesOnly() {
+        val items = fileMenuItems(
+            saveEnabled = true,
+            onOpen = {},
+            onSave = {},
+            sampleItems = listOf(
+                com.neojou.tools.ui.menu.MyTopMenuItem(id = "sample-small-kill", label = "小殺棋", onClick = {}),
+                com.neojou.tools.ui.menu.MyTopMenuItem(id = "sample-wall", label = "牆與真盤邊", onClick = {}),
+            ),
+        )
+        assertEquals(listOf("Open", "Save", "Samples"), items.map { it.label })
         val nested = items.flatMap { it.children }.map { it.label }
         assertTrue("角上做活" !in nested)
-        assertTrue("小殺棋" !in nested)
-        assertTrue("牆與真盤邊" !in nested)
-        assertTrue("Samples" !in items.map { it.label })
-        assertTrue("Samples" !in nested)
+        assertTrue("小殺棋" in nested)
+        assertTrue("牆與真盤邊" in nested)
     }
 }

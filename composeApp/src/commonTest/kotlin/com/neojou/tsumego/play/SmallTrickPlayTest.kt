@@ -11,7 +11,6 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
-import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -41,7 +40,7 @@ class SmallTrickPlayTest {
     }
 
     @Test
-    fun capturingR17R18LeavesS16AndT18SoKillIsNotYetSuccess() = runTest {
+    fun capturingR17R18SucceedsBecauseRemainingStringsCannotMakeTwoEyes() = runTest {
         val session = testSession(problem)
         assertTrue(session.tryMove(pt("S19")))
         session.waitForIdle()
@@ -56,7 +55,7 @@ class SmallTrickPlayTest {
         assertNull(snap.stones[pt("R18")])
         assertEquals(StoneColor.White, snap.stones[pt("S16")])
         assertEquals(StoneColor.White, snap.stones[pt("T18")])
-        assertNotEquals(PlayStatus.Success, snap.status)
+        assertEquals(PlayStatus.Success, snap.status)
     }
 
     @Test

@@ -1,12 +1,15 @@
 package com.neojou.tsumego.classify
 
+import com.neojou.tsumego.board.EdgeKind
+import com.neojou.tsumego.board.Edges
 import com.neojou.tsumego.board.Outcome
 import com.neojou.tsumego.board.Point
 import com.neojou.tsumego.board.Position
 import com.neojou.tsumego.board.StoneColor
 
 /**
- * ADR-0014 order: captured → Benson → 雙活 → 贏劫／輸劫 → 雙方已停則剩餘當死 → 未定.
+ * ADR-0014 order: captured → Benson → 雙活 → 贏劫／輸劫 → 雙方已停則剩餘當死 →
+ * 目標色連續落子仍到不了 Benson → 未定.
  */
 internal fun classify(position: Position, targets: Set<Point>, bothPassed: Boolean): Outcome {
     if (targets.isEmpty()) return Outcome.Unsettled
@@ -29,6 +32,9 @@ internal fun classify(position: Position, targets: Set<Point>, bothPassed: Boole
     if (bothPassed && allTargetsDeadAfterPass(onBoard, position, bensonBlack, bensonWhite)) {
         return Outcome.UnconditionalDead
     }
+    if (!ownerCanForceLife(position, targets)) {
+        return Outcome.UnconditionalDead
+    }
     return Outcome.Unsettled
 }
 
@@ -47,6 +53,189 @@ private fun allTargetsAlive(
             null -> false
         }
     }
+}
+
+private const val MAX_OWNER_FILL_SPACE = 8
+
+/**
+ * True if the unique target color can still reach Benson 無條件活
+ * by playing only its own stones (attacker 脫先). If not, the group
+ * cannot make two eyes even when ignored.
+ */
+internal fun isAwayFromTargets(position: Position, point: Point, targets: Set<Point>): Boolean {
+    val onBoard = targets.filter { it in position.stones }.toSet()
+    if (onBoard.isEmpty()) return true
+    val (empty, group) = eyeSpaceRaw(position, onBoard)
+    if (point in group || point in empty) return false
+    return position.neighbors(point).none { it in group }
+}
+
+internal fun ownerCanForceLife(position: Position, targets: Set<Point>): Boolean {
+    val onBoard = targets.filter { it in position.stones }.toSet()
+    if (onBoard.isEmpty()) return false
+    if (libertyFlood(position, onBoard).size > MAX_OWNER_FILL_SPACE) return true
+    return minOwnerMovesToTwoEyes(position, targets) != null
+}
+
+/**
+ * The first owner stone in a shortest fill to Benson. White-to-play 做活點.
+ */
+internal fun firstOwnerMoveToTwoEyes(position: Position, targets: Set<Point>): Point? {
+    val onBoard = targets.filter { it in position.stones }.toSet()
+    if (onBoard.isEmpty()) return null
+    val colors = onBoard.mapNotNull { position.stones[it] }.toSet()
+    if (colors.size != 1) return null
+    val color = colors.single()
+    val need = minOwnerMovesToTwoEyes(position, targets) ?: return null
+    if (need <= 0) return null
+    var best: Point? = null
+    var bestEyes = -1
+    for (point in eyeSpace(position, onBoard).sorted()) {
+        val next = position.play(point, color) ?: continue
+        val rest = minOwnerMovesToTwoEyes(next, targets) ?: continue
+        if (rest != need - 1) continue
+        val eyes = trueEyeCount(next, color)
+        val current = best
+        if (current == null || betterLivingMove(point, eyes, current, bestEyes, position.edges)) {
+            best = point
+            bestEyes = eyes
+        }
+    }
+    return best
+}
+
+private fun betterLivingMove(
+    candidate: Point,
+    candidateEyes: Int,
+    current: Point,
+    currentEyes: Int,
+    edges: Edges,
+): Boolean {
+    if (candidateEyes != currentEyes) return candidateEyes > currentEyes
+    val c = cornerPull(candidate, edges)
+    val k = cornerPull(current, edges)
+    if (c.first != k.first) return c.first > k.first
+    if (c.second != k.second) return c.second > k.second
+    return candidate < current
+}
+
+private fun cornerPull(point: Point, edges: Edges): Pair<Int, Int> {
+    val filePull = when {
+        edges.right == EdgeKind.Real && edges.left != EdgeKind.Real -> point.file
+        edges.left == EdgeKind.Real && edges.right != EdgeKind.Real -> -point.file
+        else -> 0
+    }
+    val rankPull = when {
+        edges.top == EdgeKind.Real && edges.bottom != EdgeKind.Real -> point.rank
+        edges.bottom == EdgeKind.Real && edges.top != EdgeKind.Real -> -point.rank
+        else -> 0
+    }
+    return filePull to rankPull
+}
+
+internal fun trueEyeCount(position: Position, color: StoneColor): Int {
+    var n = 0
+    for (p in position.playable) {
+        if (p in position.stones) continue
+        if (position.neighbors(p).isNotEmpty() &&
+            position.neighbors(p).all { position.stones[it] == color }
+        ) {
+            n++
+        }
+    }
+    return n
+}
+
+/**
+ * Fewest consecutive owner stones to Benson 無條件活, ignoring the attacker.
+ * Null if the local eye space cannot make two eyes.
+ */
+internal fun minOwnerMovesToTwoEyes(position: Position, targets: Set<Point>): Int? {
+    val onBoard = targets.filter { it in position.stones }.toSet()
+    if (onBoard.isEmpty()) return null
+    val colors = onBoard.mapNotNull { position.stones[it] }.toSet()
+    if (colors.size != 1) return 0
+    val color = colors.single()
+    data class Node(val pos: Position, val depth: Int)
+    val queue = ArrayDeque<Node>()
+    val seen = HashSet<String>()
+    queue.add(Node(position, 0))
+    seen.add(position.key)
+    var visited = 0
+    while (queue.isNotEmpty() && visited < 4000) {
+        visited++
+        val (pos, depth) = queue.removeFirst()
+        val remain = targets.filter { it in pos.stones }.toSet()
+        if (remain.isEmpty()) continue
+        val alive = bensonAlive(pos, color)
+        if (remain.all { it in alive }) return depth
+        val candidates = eyeSpace(pos, remain)
+        if (depth >= MAX_OWNER_FILL_SPACE) continue
+        for (point in candidates.sorted()) {
+            val next = pos.play(point, color) ?: continue
+            if (seen.add(next.key)) queue.add(Node(next, depth + 1))
+        }
+    }
+    return null
+}
+
+/**
+ * Empty points next to the target strings, plus one more step of empty.
+ * Full-board floods from a liberty treat outside dame as eye space and
+ * the size cap then pretends the group can live.
+ */
+private fun libertyFlood(position: Position, onBoard: Set<Point>): Set<Point> {
+    val start = LinkedHashSet<Point>()
+    val seenStr = HashSet<Point>()
+    for (t in onBoard) {
+        if (!seenStr.add(t)) continue
+        val string = position.stringAt(t)
+        seenStr.addAll(string)
+        start.addAll(position.liberties(string))
+    }
+    val region = LinkedHashSet<Point>()
+    val stack = ArrayDeque(start)
+    while (stack.isNotEmpty()) {
+        val cur = stack.removeLast()
+        if (cur in position.stones || !region.add(cur)) continue
+        for (n in position.neighbors(cur)) {
+            if (n !in position.stones && n !in region) stack.add(n)
+        }
+    }
+    return region
+}
+
+private fun eyeSpaceRaw(position: Position, onBoard: Set<Point>): Pair<Set<Point>, Set<Point>> {
+    val group = LinkedHashSet<Point>()
+    val seenStr = HashSet<Point>()
+    for (t in onBoard) {
+        if (!seenStr.add(t)) continue
+        val string = position.stringAt(t)
+        seenStr.addAll(string)
+        group.addAll(string)
+    }
+    val region = LinkedHashSet<Point>()
+    for (p in group) {
+        for (n in position.neighbors(p)) {
+            if (n !in position.stones) region.add(n)
+        }
+    }
+    for (lib in region.toList()) {
+        for (n in position.neighbors(lib)) {
+            if (n !in position.stones) region.add(n)
+        }
+    }
+    return region to group
+}
+
+private fun eyeSpace(position: Position, onBoard: Set<Point>): Set<Point> {
+    val (region, group) = eyeSpaceRaw(position, onBoard)
+    if (region.size <= MAX_OWNER_FILL_SPACE) return region
+    if (group.isEmpty()) return region
+    return region.sortedWith(
+        compareBy<Point> { p -> group.minOf { kotlin.math.abs(it.file - p.file) + kotlin.math.abs(it.rank - p.rank) } }
+            .thenBy { it },
+    ).take(MAX_OWNER_FILL_SPACE).toSet()
 }
 
 private fun allTargetsDeadAfterPass(

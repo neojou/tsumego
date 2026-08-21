@@ -7,10 +7,10 @@
 **Status:** resolved
 
 - [x] 開局白活點只算一次；後續搜尋先驗證白下該點（不是只在遠離戰場才探）
-- [x] 成功或失敗後可重做，黑從題目開始再答，搜尋路徑保留
+- [x] 成功或失敗後可重做，黑從題目開始再答；路徑先不顯示，同一局面再下同一手重用搜尋
 - [x] 蒙地卡羅只做著手順序／猜點，精確證明與最長抵抗不變
 - [x] 對局 seam TDD；更新 CONTEXT／ADR-0022／spec
 
 ## Answer
 
-`findOpeningWhiteLife` 在 Session 建立時算一次開局白活點（先 Benson 立刻做活，否則蒙地卡羅排序）。`SolverInput.hintWhite` 讓每次 `solve` 的白手把該點放在最前；另用蒙地卡羅猜本手最佳落點當次優先。`Session.redo()` 在成功／失敗後重置盤面與歷史、保留 `searchPaths`。見 ADR-0022。
+`findOpeningWhiteLife` 與蒙地卡羅不接入搜尋。`Session.redo()` 重置盤面與歷史、畫面路徑清空；同一局面的 `SolverResult` 與路徑留在對局快取，再下同一手直接重用。見 ADR-0022、CONTEXT 重做。

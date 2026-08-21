@@ -7,6 +7,9 @@ import com.neojou.tsumego.board.Problem
 import com.neojou.tsumego.board.StoneColor
 import com.neojou.tsumego.board.isSuccess
 import com.neojou.tsumego.classify.classify
+import com.neojou.tsumego.classify.firstOwnerMoveToTwoEyes
+import com.neojou.tsumego.classify.minOwnerMovesToTwoEyes
+import com.neojou.tsumego.classify.ownerCanForceLife
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.TimeSource
 
@@ -42,6 +45,7 @@ data class SolverInput(
     val onPath: (String) -> Unit = {},
     val onPathsComplete: () -> Unit = {},
     val hintWhite: Point? = null,
+    val blackPlayedAway: Boolean = false,
 )
 
 fun interface Solver {
@@ -59,10 +63,22 @@ class AlphaBetaSolver(
     private val maxDepth: Int = 48,
 ) : Solver {
     override suspend fun solve(input: SolverInput): SolverResult {
+        val liveAt = firstOwnerMoveToTwoEyes(input.position, input.problem.targets)
+        if (liveAt != null && input.blackPlayedAway) {
+            val next = input.position.play(liveAt, StoneColor.White)
+            if (next != null && ownerCanForceLife(next, input.problem.targets)) {
+                val action = Action.Move(liveAt)
+                input.onPath(formatSearchPath(listOf(action), "失敗"))
+                input.onPathsComplete()
+                return SolverResult.Refute(action)
+            }
+        }
         val search = Search(
             problem = input.problem,
             budget = input.budget,
             onPath = input.onPath,
+            rootHintWhite = liveAt,
+            rootKey = input.position.key,
         )
         var proven: Force? = null
         var provenDepth = 0
@@ -104,16 +120,23 @@ private class Search(
     private val problem: Problem,
     private val budget: Budget,
     private val onPath: (String) -> Unit,
+    private val rootHintWhite: Point? = null,
+    private val rootKey: String? = null,
 ) {
     private fun moves(position: Position, toPlay: StoneColor): List<Action> =
-        actions(position, toPlay, problem)
+        actions(
+            position,
+            toPlay,
+            problem,
+            hintWhite = rootHintWhite.takeIf { toPlay == StoneColor.White && position.key == rootKey },
+        )
 
     private val proven = HashMap<String, Force>()
     private val outcomes = HashMap<String, Outcome>()
     private val nodes = IntArray(1)
 
     suspend fun pickResist(input: SolverInput, proveDepth: Int): SolverResult {
-        val scored = ArrayList<Triple<Action, Int, Int>>()
+        val scored = ArrayList<ResistScore>()
         for (action in moves(input.position, StoneColor.White)) {
             if (budget.expired()) return SolverResult.Timeout
             val next = applyAction(input.position, action, StoneColor.White, input.consecutivePasses) ?: continue
@@ -130,16 +153,39 @@ private class Search(
                     Force.Unknown -> Unit
                 }
             }
-            if (found != null) scored += Triple(action, found.proofPly, found.nodes)
+            if (found != null) {
+                val winning = countWinningBlackReplies(next.first, next.second, proveDepth, action)
+                    ?: return SolverResult.Timeout
+                scored += ResistScore(
+                    action = action,
+                    winningBlack = winning,
+                    proofPly = found.proofPly,
+                    nodes = found.nodes,
+                )
+            }
         }
         if (scored.isEmpty()) return SolverResult.Resist(Action.Pass)
-        val best = scored.maxWith(
-            compareBy<Triple<Action, Int, Int>> { it.second }
-                .thenBy { if (it.first is Action.Pass) 0 else 1 }
-                .thenBy { it.third }
-                .thenBy { -actionRank(it.first) },
-        )
-        return SolverResult.Resist(best.first)
+        val best = scored.minWith(resistOrder)
+        return SolverResult.Resist(best.action)
+    }
+
+    private suspend fun countWinningBlackReplies(
+        position: Position,
+        passes: Int,
+        proveDepth: Int,
+        white: Action,
+    ): Int? {
+        var win = 0
+        for (black in moves(position, StoneColor.Black)) {
+            if (budget.expired()) return null
+            val afterBlack = applyAction(position, black, StoneColor.Black, passes) ?: continue
+            when (canForce(afterBlack.first, StoneColor.White, afterBlack.second, proveDepth - 1, listOf(white, black))) {
+                is Force.Yes -> win++
+                is Force.TimedOut -> return null
+                else -> Unit
+            }
+        }
+        return win
     }
 
     suspend fun pickRefute(input: SolverInput, proveDepth: Int): SolverResult {
@@ -156,8 +202,34 @@ private class Search(
             if (child is Force.No) preventing += action
         }
         if (preventing.isEmpty()) return SolverResult.Refute(Action.Pass)
-        val stones = preventing.filterIsInstance<Action.Move>().sortedBy { it.point }
-        return SolverResult.Refute(stones.firstOrNull() ?: Action.Pass)
+        val liveAt = firstOwnerMoveToTwoEyes(input.position, problem.targets)
+        if (liveAt != null) {
+            val liveMove = Action.Move(liveAt)
+            if (liveMove in preventing) return SolverResult.Refute(liveMove)
+        }
+        val best = preventing.minWith(
+            compareBy<Action> { refuteLifeTier(it, input.position) }
+                .thenBy { minOwnerMovesToTwoEyes(afterWhite(input.position, it), problem.targets) ?: 99 }
+                .thenBy { if (it is Action.Pass) 1 else 0 }
+                .thenBy { actionRank(it) },
+        )
+        return SolverResult.Refute(best)
+    }
+
+    private fun afterWhite(position: Position, action: Action): Position = when (action) {
+        Action.Pass -> position
+        is Action.Move -> position.play(action.point, StoneColor.White) ?: position
+    }
+
+    private fun refuteLifeTier(action: Action, from: Position): Int {
+        val position = afterWhite(from, action)
+        val outcome = cachedOutcome(position, bothPassed = false)
+        return when {
+            outcome == Outcome.UnconditionalLive -> 0
+            outcome != Outcome.Unsettled && !problem.goal.isSuccess(outcome) -> 1
+            ownerCanForceLife(position, problem.targets) -> 2
+            else -> 3
+        }
     }
 
     suspend fun canForce(
@@ -216,6 +288,7 @@ private class Search(
         var sawTimeout = false
         var totalNodes = 0
         var allNo = true
+        var bestYes: Force.Yes? = null
         val noZones = ArrayList<Set<Point>>()
         val pending = ArrayDeque(moves)
         val searched = HashSet<Action>()
@@ -225,11 +298,20 @@ private class Search(
             val next = applyAction(position, action, StoneColor.Black, passes) ?: continue
             when (val child = canForce(next.first, StoneColor.White, next.second, depth - 1, path + action)) {
                 is Force.TimedOut -> sawTimeout = true
-                is Force.Yes -> return Force.Yes(
-                    child.proofPly + 1,
-                    child.nodes,
-                    dilate(child.zone, position, action),
-                )
+                is Force.Yes -> {
+                    allNo = false
+                    val yes = Force.Yes(
+                        child.proofPly + 1,
+                        child.nodes,
+                        dilate(child.zone, position, action),
+                    )
+                    val current = bestYes
+                    val better = current == null ||
+                        yes.proofPly < current.proofPly ||
+                        (yes.proofPly == current.proofPly && yes.nodes < current.nodes)
+                    if (better) bestYes = yes
+                    if (yes.proofPly <= 1) return yes
+                }
                 is Force.No -> {
                     totalNodes += child.nodes
                     noZones += child.zone
@@ -244,7 +326,9 @@ private class Search(
                 }
             }
         }
+        val provenYes = bestYes
         return when {
+            provenYes != null -> provenYes
             sawTimeout -> Force.TimedOut
             anyUnknown -> Force.Unknown
             allNo -> Force.No(totalNodes, dilate(noZones.flatten().toSet(), position))
@@ -410,6 +494,23 @@ internal fun applyAction(
         next to 0
     }
 }
+
+private data class ResistScore(
+    val action: Action,
+    val winningBlack: Int,
+    val proofPly: Int,
+    val nodes: Int,
+)
+
+/**
+ * Narrower kill first (fewer proven winning black replies), then longer ply,
+ * then more nodes, then smaller coordinates.
+ */
+private val resistOrder = compareBy<ResistScore> { it.winningBlack }
+    .thenBy { if (it.action is Action.Pass) 1 else 0 }
+    .thenByDescending { it.proofPly }
+    .thenByDescending { it.nodes }
+    .thenBy { actionRank(it.action) }
 
 private fun actionRank(action: Action): Int = when (action) {
     Action.Pass -> Int.MAX_VALUE
