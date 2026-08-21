@@ -40,6 +40,7 @@ data class PlaySnapshot(
     val lastMoveIsPass: Boolean,
     val canUndo: Boolean,
     val searchPaths: List<String> = emptyList(),
+    val pickingReply: Boolean = false,
 )
 
 private data class Ply(
@@ -71,6 +72,12 @@ class Session(
     }
 
     fun pass(): Boolean {
+        if (_state.value.status == PlayStatus.WaitingForReply) {
+            searchJob?.cancel()
+            searchJob = null
+            applyWhite(Action.Pass, failing = false)
+            return true
+        }
         if (_state.value.status != PlayStatus.InProgress) return false
         applyBlack(Action.Pass, position)
         return true
@@ -136,6 +143,9 @@ class Session(
                                 else old.copy(searchPaths = old.searchPaths + line)
                             }
                         },
+                        onPathsComplete = {
+                            _state.update { it.copy(pickingReply = true) }
+                        },
                     ),
                 )
             }
@@ -180,7 +190,13 @@ class Session(
         clearPaths: Boolean = false,
     ) {
         _state.update { old ->
-            snapshotOf(status, lastMove, lastMoveIsPass, if (clearPaths) emptyList() else old.searchPaths)
+            snapshotOf(
+                status,
+                lastMove,
+                lastMoveIsPass,
+                if (clearPaths) emptyList() else old.searchPaths,
+                pickingReply = if (clearPaths || status != PlayStatus.WaitingForReply) false else old.pickingReply,
+            )
         }
     }
 
@@ -189,6 +205,7 @@ class Session(
         lastMove: Point?,
         lastMoveIsPass: Boolean,
         searchPaths: List<String> = emptyList(),
+        pickingReply: Boolean = false,
     ) = PlaySnapshot(
         problem = problem,
         stones = position.stones,
@@ -202,6 +219,7 @@ class Session(
         lastMoveIsPass = lastMoveIsPass,
         canUndo = history.isNotEmpty(),
         searchPaths = searchPaths,
+        pickingReply = pickingReply,
     )
 
     private fun lastPoint(action: Action?): Point? = (action as? Action.Move)?.point

@@ -15,4 +15,4 @@
 
 ## Answer
 
-`AlphaBetaSolver` answers 應手 / 反駁手，並把已走完的搜尋路徑寫進 `PlaySnapshot.searchPaths`。不設時限（ADR-0019）。`SessionSolverTest` 與 `SmallTrickSolverTest`。
+`AlphaBetaSolver` answers 應手 / 反駁手，並把已走完的搜尋路徑寫進 `PlaySnapshot.searchPaths`（顯示時從 1 編號）。路徑搜完設 `pickingReply`。不設時限（ADR-0019）。輪白思考時「停」視為白停。`SessionSolverTest` 與 `SmallTrickSolverTest`。

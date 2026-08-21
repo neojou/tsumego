@@ -2,7 +2,7 @@ Status: resolved
 
 # 詰碁訓練機
 
-Glossary：`CONTEXT.md`。契約：`docs/adr/0001`–`0019`（`0006` 已被 `0018` 取代；`0005`、`0016` 已被 `0019` 取代）。
+Glossary：`CONTEXT.md`。契約：`docs/adr/0001`–`0020`（`0006` 已被 `0018` 取代；`0005`、`0016` 已被 `0019` 取代）。
 
 ## Problem Statement
 
@@ -49,7 +49,7 @@ Glossary：`CONTEXT.md`。契約：`docs/adr/0001`–`0019`（`0006` 已被 `001
 33. As a 解題者, I want 悔一對（我的手加程式的應手或反駁手）, so that 走錯可以重來。
 34. As a 解題者, I want 連悔到題目開始, so that 可以從頭試另一條變化。
 35. As a 解題者, I want 搜尋不設時限, so that 角題不會一直超時。
-36. As a 解題者, I want 題目盤右側列出已走完的搜尋路徑（白下 xx -> 黑下 xx -> 結果 xx）, so that 我知道算過哪些變化。
+36. As a 解題者, I want 題目盤右側列出已走完的搜尋路徑（編號從 1、可捲動）, so that 我知道算過哪些變化。
 37. As a 解題者, I want 思考中仍看得到盤面與新出現的搜尋路徑, so that 畫面不會假死。
 38. As a 解題者, I want 搜尋中可以悔棋, so that 不必等算完才能回頭。
 41. As an 出題者, I want TopMenu 有 Input → Black First / White First, so that 我能宣告棋譜圖上誰先走。
@@ -92,7 +92,7 @@ Glossary：`CONTEXT.md`。契約：`docs/adr/0001`–`0019`（`0006` 已被 `001
 - **認圖** 介面：棋譜圖 + 黑先或白先 → 確認畫面草稿（子、建議矩形與四邊；題型與目標棋串仍由人在確認畫面補）。兩個 adapter：Desktop 自動填子；Wasm 與認圖失敗為空盤 + 原圖當底。白先在進確認畫面之前翻色。認圖不在 commonMain。
 - **確認畫面** 是殼的一部分：循環改子、標目標（點一下擴整串）、切四邊、選題型、確認才交給題目庫。做活／劫活目標須為黑；殺棋／劫殺須為白；雙活題須兩色。
 - TopMenu：**Input**（Black First、White First，兩邊都有）、**File**（Open、Save、Samples）、**About**。Input 走棋譜圖；File 走題目檔（ADR-0018）。
-- 搜尋不設時限。每條走到終局的搜尋路徑列在題目盤右側（ADR-0019）。搜尋在背景跑，殼在等待時仍顯示盤面與新路徑；悔棋中止搜尋。
+- 搜尋不設時限。每條走到終局的搜尋路徑列在題目盤右側、從 1 編號、可捲動（ADR-0019）。殼左上為「黑先殺白」這類標題、輪黑請落子／輪白思考時間。路徑搜完顯示「從路徑中思考最強應手...」。牆邊若貼著子，題目盤再空兩路（ADR-0020）。座標標號必須畫在畫布內。
 - v1 棋盤：Compose Canvas 程式畫木紋、徑向漸層、高光、落影；不是真 3D 場景、不是預先畫好的棋子貼圖。
 - 平台：commonMain 行為 Desktop 與 Wasm 一致。Android／iOS 不在本 spec 實作，但不要為它們預先開解題 adapter。
 - 現有殼只留 About 與選單元件；去掉 K Chart／Database 殘留語意。產品名維持「詰碁」。

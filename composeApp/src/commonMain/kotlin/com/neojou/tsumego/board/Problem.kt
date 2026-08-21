@@ -63,6 +63,31 @@ data class Problem(
     fun flipped(): Problem = copy(
         stones = stones.mapValues { it.value.opposite },
     )
+
+    /**
+     * If a 牆 side has a stone on that edge, open [extra] empty lines so the
+     * stone is not sitting on the cut.
+     */
+    fun withOpenWallMargin(extra: Int = 2): Problem {
+        var left = rect.left
+        var right = rect.right
+        var bottom = rect.bottom
+        var top = rect.top
+        if (edges.bottom == EdgeKind.Wall && stones.keys.any { it.rank == rect.bottom }) {
+            bottom = (rect.bottom - extra).coerceAtLeast(1)
+        }
+        if (edges.top == EdgeKind.Wall && stones.keys.any { it.rank == rect.top }) {
+            top = (rect.top + extra).coerceAtMost(19)
+        }
+        if (edges.left == EdgeKind.Wall && stones.keys.any { it.file == rect.left }) {
+            left = (rect.left - extra).coerceAtLeast(0)
+        }
+        if (edges.right == EdgeKind.Wall && stones.keys.any { it.file == rect.right }) {
+            right = (rect.right + extra).coerceAtMost(18)
+        }
+        if (left == rect.left && right == rect.right && bottom == rect.bottom && top == rect.top) return this
+        return copy(rect = BoardRect(left, right, bottom, top))
+    }
 }
 
 fun lowerLeftCorner(files: Int, ranks: Int): Pair<BoardRect, Edges> {

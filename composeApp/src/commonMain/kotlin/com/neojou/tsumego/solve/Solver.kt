@@ -40,6 +40,7 @@ data class SolverInput(
     val consecutivePasses: Int,
     val budget: Budget,
     val onPath: (String) -> Unit = {},
+    val onPathsComplete: () -> Unit = {},
 )
 
 fun interface Solver {
@@ -82,8 +83,14 @@ class AlphaBetaSolver(
         return when (val p = proven) {
             null, Force.Unknown -> SolverResult.Timeout
             is Force.TimedOut -> SolverResult.Timeout
-            is Force.Yes -> search.pickResist(input, provenDepth)
-            is Force.No -> search.pickRefute(input, provenDepth)
+            is Force.Yes -> {
+                input.onPathsComplete()
+                search.pickResist(input, provenDepth)
+            }
+            is Force.No -> {
+                input.onPathsComplete()
+                search.pickRefute(input, provenDepth)
+            }
         }
     }
 }

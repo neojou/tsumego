@@ -36,7 +36,7 @@ fun decodeBoardImage(bytes: ByteArray): ImageBitmap? = runCatching {
     Image.makeFromEncoded(bytes).toComposeImageBitmap()
 }.getOrNull()
 
-private data class BoardGeom(
+data class BoardGeom(
     val spacing: Float,
     val origin: Offset,
     val rect: BoardRect,
@@ -56,6 +56,32 @@ private data class BoardGeom(
         val dy = c.y - position.y
         return if (dx * dx + dy * dy <= (spacing * 0.45f) * (spacing * 0.45f)) point else point
     }
+
+    fun fileLabelBottom(): Float = center(Point(rect.left, rect.bottom)).y + spacing * 0.70f
+
+    fun rankLabelRight(): Float = center(Point(rect.right, rect.top)).x + spacing * 0.70f
+}
+
+fun boardLayout(canvasWidth: Float, canvasHeight: Float, rect: BoardRect): BoardGeom {
+    val fileGaps = (rect.right - rect.left).coerceAtLeast(1)
+    val rankGaps = (rect.top - rect.bottom).coerceAtLeast(1)
+    val labelFrac = 0.70f
+    val woodFrac = 0.55f
+    val spacing = min(
+        canvasWidth / (fileGaps + woodFrac + labelFrac),
+        canvasHeight / (rankGaps + woodFrac + labelFrac),
+    ).coerceAtLeast(1f)
+    val gridW = spacing * fileGaps
+    val gridH = spacing * rankGaps
+    val leftPad = spacing * woodFrac
+    val topPad = spacing * woodFrac
+    val rightPad = spacing * labelFrac
+    val bottomPad = spacing * labelFrac
+    val origin = Offset(
+        x = leftPad + (canvasWidth - leftPad - rightPad - gridW).coerceAtLeast(0f) / 2f,
+        y = topPad + (canvasHeight - topPad - bottomPad - gridH).coerceAtLeast(0f) / 2f,
+    )
+    return BoardGeom(spacing, origin, rect)
 }
 
 @Composable
@@ -142,22 +168,14 @@ fun BoardView(
                 drawCircle(mark, radius = spacing * 0.12f, center = Offset(c.x, c.y), style = Stroke(width = spacing * 0.04f))
             }
         } else {
-            val pad = min(size.width, size.height) * 0.08f
-            val files = (rect.right - rect.left + 1)
-            val ranks = (rect.top - rect.bottom + 1)
-            val innerW = size.width - pad * 2
-            val innerH = size.height - pad * 2
-            val spacing = min(innerW / (files - 1).coerceAtLeast(1), innerH / (ranks - 1).coerceAtLeast(1))
-            val origin = Offset(
-                x = (size.width - spacing * (files - 1)) / 2f,
-                y = (size.height - spacing * (ranks - 1)) / 2f,
-            )
-            val geom = BoardGeom(spacing, origin, rect)
+            val geom = boardLayout(size.width, size.height, rect)
+            val spacing = geom.spacing
+            val origin = geom.origin
             val grid = Rect(
                 left = origin.x,
                 top = origin.y,
-                right = origin.x + spacing * (files - 1),
-                bottom = origin.y + spacing * (ranks - 1),
+                right = origin.x + spacing * (rect.right - rect.left),
+                bottom = origin.y + spacing * (rect.top - rect.bottom),
             )
             drawWood(grid, spacing)
             drawWalls(grid, edges, spacing)
@@ -200,15 +218,7 @@ private fun hitOnBoard(
         )
         return overlay.hit(x, y)
     }
-    val pad = min(canvasWidth, canvasHeight) * 0.08f
-    val files = (rect.right - rect.left + 1)
-    val ranks = (rect.top - rect.bottom + 1)
-    val spacing = min((canvasWidth - pad * 2) / (files - 1).coerceAtLeast(1), (canvasHeight - pad * 2) / (ranks - 1).coerceAtLeast(1))
-    val origin = Offset(
-        x = (canvasWidth - spacing * (files - 1)) / 2f,
-        y = (canvasHeight - spacing * (ranks - 1)) / 2f,
-    )
-    return BoardGeom(spacing, origin, rect).hit(Offset(x, y))
+    return boardLayout(canvasWidth, canvasHeight, rect).hit(Offset(x, y))
 }
 
 private fun DrawScope.drawOverlayGrid(overlay: OverlayLayout, edges: Edges) {

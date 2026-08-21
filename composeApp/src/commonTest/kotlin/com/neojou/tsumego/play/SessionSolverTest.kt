@@ -121,6 +121,67 @@ class SessionSolverTest {
     }
 
     @Test
+    fun pathsCompleteMarksPickingReply() = runTest {
+        val started = CompletableDeferred<Unit>()
+        val finish = CompletableDeferred<Unit>()
+        val solver = object : Solver {
+            override suspend fun solve(input: SolverInput): SolverResult {
+                input.onPath("白下 B3 -> 黑下 A3 -> 結果 成功")
+                input.onPathsComplete()
+                started.complete(Unit)
+                finish.await()
+                return SolverResult.Resist(Action.Pass)
+            }
+        }
+        val session = testSession(
+            cornerProblem(
+                black = "A2,B1,C2",
+                white = "B2",
+                goal = Goal.Kill,
+                targets = "B2",
+            ),
+            solver = solver,
+        )
+        assertTrue(session.tryMove(pt("A1")))
+        started.await()
+        assertTrue(session.state.value.pickingReply)
+        finish.complete(Unit)
+        session.waitForIdle()
+        assertTrue(!session.state.value.pickingReply)
+    }
+
+    @Test
+    fun passDuringSearchAppliesWhitePass() = runTest {
+        val started = CompletableDeferred<Unit>()
+        val finish = CompletableDeferred<Unit>()
+        val solver = object : Solver {
+            override suspend fun solve(input: SolverInput): SolverResult {
+                started.complete(Unit)
+                finish.await()
+                return SolverResult.Resist(Action.Move(pt("B3")))
+            }
+        }
+        val session = testSession(
+            cornerProblem(
+                black = "A2,B1,C2",
+                white = "B2",
+                goal = Goal.Kill,
+                targets = "B2",
+            ),
+            solver = solver,
+        )
+        assertTrue(session.tryMove(pt("A1")))
+        started.await()
+        assertTrue(session.pass())
+        finish.complete(Unit)
+        session.waitForIdle()
+        assertEquals(PlayStatus.InProgress, session.state.value.status)
+        assertNull(session.state.value.stones[pt("B3")])
+        assertEquals(StoneColor.Black, session.state.value.stones[pt("A1")])
+        assertTrue(session.state.value.lastMoveIsPass)
+    }
+
+    @Test
     fun depthExhaustedKeepsBoardWithoutAWhiteMove() = runTest {
         val session = testSession(
             cornerProblem(

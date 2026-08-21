@@ -10,8 +10,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.VerticalScrollbar
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollbarAdapter
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
@@ -51,6 +54,10 @@ import com.neojou.tsumego.library.ProblemLibrary
 import com.neojou.tsumego.library.ProblemLoad
 import com.neojou.tsumego.play.PlayStatus
 import com.neojou.tsumego.play.Session
+import com.neojou.tsumego.play.numberedSearchPaths
+import com.neojou.tsumego.play.playHeading
+import kotlinx.coroutines.delay
+import kotlin.time.TimeSource
 import com.neojou.tsumego.ui.BoardView
 import com.neojou.tsumego.ui.ConfirmScreen
 import com.neojou.tsumego.ui.label
@@ -68,14 +75,15 @@ fun Tsumego() {
     var currentProblem by remember { mutableStateOf<Problem?>(null) }
 
     fun startProblem(problem: Problem) {
-        val err = problem.validationError()
+        val playable = problem.withOpenWallMargin()
+        val err = playable.validationError()
         if (err != null) {
             errorMessage = err
             return
         }
-        currentProblem = problem
+        currentProblem = playable
         draft = null
-        session = Session(problem = problem, scope = scope)
+        session = Session(problem = playable, scope = scope)
     }
 
     val topMenus = listOf(
@@ -178,12 +186,43 @@ private suspend fun openImport(diagramFirst: StoneColor, done: (ConfirmDraft?, S
 private fun PlayScreen(session: Session) {
     val snap by session.state.collectAsState()
     val clickable = snap.status == PlayStatus.InProgress
+    var thinkSec by remember { mutableStateOf(0L) }
+    LaunchedEffect(snap.status) {
+        thinkSec = 0
+        if (snap.status != PlayStatus.WaitingForReply) return@LaunchedEffect
+        val start = TimeSource.Monotonic.markNow()
+        while (true) {
+            thinkSec = start.elapsedNow().inWholeSeconds
+            delay(200)
+        }
+    }
     Column(Modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(statusText(snap.status, snap.searchPaths.size), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-        Text("題型：${snap.problem.goal.label()}", style = MaterialTheme.typography.bodyMedium)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = { session.pass() }, enabled = clickable) { Text("停") }
-            OutlinedButton(onClick = { session.undo() }, enabled = snap.canUndo) { Text("悔棋") }
+        Text(snap.problem.goal.playHeading(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        when (snap.status) {
+            PlayStatus.InProgress -> Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text("輪黑, 請落子", style = MaterialTheme.typography.bodyLarge)
+                Button(onClick = { session.pass() }) { Text("停") }
+                OutlinedButton(onClick = { session.undo() }, enabled = snap.canUndo) { Text("悔棋") }
+            }
+            PlayStatus.WaitingForReply, PlayStatus.Timeout -> {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text("輪白, 思考時間：$thinkSec  秒", style = MaterialTheme.typography.bodyLarge)
+                    Button(onClick = { session.pass() }) { Text("停") }
+                }
+                Text("目前動作 :", style = MaterialTheme.typography.bodyMedium)
+                Text("    搜尋路徑數目： ${snap.searchPaths.size}", style = MaterialTheme.typography.bodyMedium)
+                if (snap.pickingReply) {
+                    Text("    從路徑中思考最強應手...", style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+            PlayStatus.Success -> Text("成功", style = MaterialTheme.typography.bodyLarge)
+            PlayStatus.Failure -> Text("失敗", style = MaterialTheme.typography.bodyLarge)
         }
         Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             BoardView(
@@ -195,34 +234,40 @@ private fun PlayScreen(session: Session) {
                 onClick = { session.tryMove(it) },
                 modifier = Modifier.weight(1f).fillMaxHeight(),
             )
-            Column(Modifier.width(320.dp).fillMaxHeight()) {
-                Text("搜尋路徑", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                Text(
-                    "${snap.searchPaths.size} 條",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                )
-                LazyColumn(Modifier.weight(1f).fillMaxWidth().padding(top = 8.dp)) {
-                    items(snap.searchPaths.asReversed()) { line ->
-                        Text(
-                            line,
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 12.sp,
-                            modifier = Modifier.padding(bottom = 6.dp),
-                        )
-                    }
-                }
-            }
+            SearchPathPane(paths = snap.searchPaths, modifier = Modifier.width(340.dp).fillMaxHeight())
         }
     }
 }
 
-private fun statusText(status: PlayStatus, pathCount: Int = 0): String = when (status) {
-    PlayStatus.InProgress -> "輪黑"
-    PlayStatus.WaitingForReply -> if (pathCount == 0) "思考中" else "思考中（${pathCount} 條路徑）"
-    PlayStatus.Success -> "成功"
-    PlayStatus.Failure -> "失敗"
-    PlayStatus.Timeout -> "未定"
+@Composable
+private fun SearchPathPane(paths: List<String>, modifier: Modifier = Modifier) {
+    val listState = rememberLazyListState()
+    val numbered = numberedSearchPaths(paths)
+    LaunchedEffect(paths.size) {
+        if (numbered.isNotEmpty()) listState.scrollToItem(numbered.lastIndex)
+    }
+    Column(modifier) {
+        Text("搜尋路徑", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+        Box(Modifier.weight(1f).fillMaxWidth().padding(top = 8.dp)) {
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize().padding(end = 14.dp),
+            ) {
+                items(numbered) { line ->
+                    Text(
+                        line,
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(bottom = 6.dp),
+                    )
+                }
+            }
+            VerticalScrollbar(
+                adapter = rememberScrollbarAdapter(listState),
+                modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
+            )
+        }
+    }
 }
 
 @Composable
