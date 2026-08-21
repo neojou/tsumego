@@ -6,6 +6,9 @@ import com.neojou.tsumego.boxedProblem
 import com.neojou.tsumego.cornerProblem
 import com.neojou.tsumego.pt
 import com.neojou.tsumego.solve.Action
+import com.neojou.tsumego.solve.Solver
+import com.neojou.tsumego.solve.SolverInput
+import com.neojou.tsumego.solve.SolverResult
 import com.neojou.tsumego.testSession
 import com.neojou.tsumego.ScriptedSolver
 import kotlinx.coroutines.test.runTest
@@ -123,6 +126,62 @@ class SessionRulesTest {
         assertTrue(session.undo())
         assertEquals(atariKill.stones, session.state.value.stones)
         assertFalse(session.state.value.canUndo)
+        assertEquals(PlayStatus.InProgress, session.state.value.status)
+    }
+
+    @Test
+    fun redoAfterFailureKeepsSearchPathsAndLetsBlackStartAgain() = runTest {
+        val path = "白下 B3 -> 結果 失敗"
+        val solver = object : Solver {
+            override suspend fun solve(input: SolverInput): SolverResult {
+                input.onPath(path)
+                input.onPathsComplete()
+                return SolverResult.Refute(Action.Move(pt("B3")))
+            }
+        }
+        val session = testSession(atariKill, solver = solver)
+        assertTrue(session.tryMove(pt("A1")))
+        session.waitForIdle()
+        assertEquals(PlayStatus.Failure, session.state.value.status)
+        assertEquals(listOf(path), session.state.value.searchPaths)
+        assertEquals(1, session.state.value.searchPathCount)
+        assertTrue(session.state.value.canRedo)
+        assertTrue(session.redo())
+        val snap = session.state.value
+        assertEquals(PlayStatus.InProgress, snap.status)
+        assertEquals(atariKill.stones, snap.stones)
+        assertEquals(listOf(path), snap.searchPaths)
+        assertEquals(1, snap.searchPathCount)
+        assertFalse(snap.canUndo)
+        assertFalse(snap.canRedo)
+        assertTrue(session.tryMove(pt("A1")))
+        session.waitForIdle()
+        assertEquals(PlayStatus.Failure, session.state.value.status)
+        assertTrue(session.state.value.searchPaths.contains(path))
+    }
+
+    @Test
+    fun redoAfterSuccessLetsBlackStartAgain() = runTest {
+        val session = testSession(atariKill)
+        assertTrue(session.tryMove(pt("B3")))
+        session.waitForIdle()
+        assertEquals(PlayStatus.Success, session.state.value.status)
+        assertTrue(session.state.value.canRedo)
+        assertTrue(session.redo())
+        val snap = session.state.value
+        assertEquals(PlayStatus.InProgress, snap.status)
+        assertEquals(atariKill.stones, snap.stones)
+        assertFalse(snap.canUndo)
+        assertTrue(session.tryMove(pt("A1")))
+        session.waitForIdle()
+        assertEquals(PlayStatus.InProgress, session.state.value.status)
+        assertEquals(StoneColor.Black, session.state.value.stones[pt("A1")])
+    }
+
+    @Test
+    fun redoWhileInProgressIsRejected() = runTest {
+        val session = testSession(atariKill)
+        assertFalse(session.redo())
         assertEquals(PlayStatus.InProgress, session.state.value.status)
     }
 

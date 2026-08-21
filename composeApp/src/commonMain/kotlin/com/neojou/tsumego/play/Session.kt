@@ -12,6 +12,7 @@ import com.neojou.tsumego.solve.Solver
 import com.neojou.tsumego.solve.SolverInput
 import com.neojou.tsumego.solve.SolverResult
 import com.neojou.tsumego.solve.UnlimitedBudget
+import com.neojou.tsumego.solve.findOpeningWhiteLife
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -42,6 +43,7 @@ data class PlaySnapshot(
     val searchPaths: List<String> = emptyList(),
     val searchPathCount: Int = 0,
     val pickingReply: Boolean = false,
+    val canRedo: Boolean = false,
 )
 
 private data class Ply(
@@ -61,6 +63,7 @@ class Session(
     private var consecutivePasses: Int = 0
     private val history = ArrayList<Ply>()
     private var searchJob: Job? = null
+    private val openingWhiteLife: Point? = findOpeningWhiteLife(problem)
 
     private val _state = MutableStateFlow(snapshotOf(PlayStatus.InProgress, lastMove = null, lastMoveIsPass = false))
     val state: StateFlow<PlaySnapshot> = _state.asStateFlow()
@@ -95,6 +98,18 @@ class Session(
         return true
     }
 
+    fun redo(): Boolean {
+        val status = _state.value.status
+        if (status != PlayStatus.Success && status != PlayStatus.Failure) return false
+        searchJob?.cancel()
+        searchJob = null
+        position = Position.initial(problem)
+        consecutivePasses = 0
+        history.clear()
+        publish(PlayStatus.InProgress, lastMove = null, lastMoveIsPass = false, clearPaths = false)
+        return true
+    }
+
     suspend fun waitForIdle() {
         searchJob?.join()
     }
@@ -113,9 +128,9 @@ class Session(
         val outcome = classify(position, problem.targets, both)
         when {
             problem.goal.isSuccess(outcome) ->
-                publish(PlayStatus.Success, lastPoint(action), action is Action.Pass, clearPaths = true)
+                publish(PlayStatus.Success, lastPoint(action), action is Action.Pass)
             both ->
-                publish(PlayStatus.Failure, lastPoint(action), action is Action.Pass, clearPaths = true)
+                publish(PlayStatus.Failure, lastPoint(action), action is Action.Pass)
             else -> launchSearch()
         }
     }
@@ -126,11 +141,9 @@ class Session(
             PlayStatus.WaitingForReply,
             lastPoint(history.lastOrNull()?.black),
             history.lastOrNull()?.black is Action.Pass,
-            clearPaths = true,
         )
         val frozenPosition = position
         val frozenPasses = consecutivePasses
-        val frozenBlack = (history.lastOrNull()?.black as? Action.Move)?.point
         searchJob = scope.launch {
             val result = withContext(searchDispatcher) {
                 solver.solve(
@@ -153,7 +166,7 @@ class Session(
                         onPathsComplete = {
                             _state.update { it.copy(pickingReply = true) }
                         },
-                        lastBlack = frozenBlack,
+                        hintWhite = openingWhiteLife,
                     ),
                 )
             }
@@ -231,6 +244,7 @@ class Session(
         searchPaths = searchPaths,
         searchPathCount = searchPathCount,
         pickingReply = pickingReply,
+        canRedo = status == PlayStatus.Success || status == PlayStatus.Failure,
     )
 
     private fun lastPoint(action: Action?): Point? = (action as? Action.Move)?.point

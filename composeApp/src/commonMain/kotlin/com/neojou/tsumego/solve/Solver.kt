@@ -41,7 +41,7 @@ data class SolverInput(
     val budget: Budget,
     val onPath: (String) -> Unit = {},
     val onPathsComplete: () -> Unit = {},
-    val lastBlack: Point? = null,
+    val hintWhite: Point? = null,
 )
 
 fun interface Solver {
@@ -49,8 +49,8 @@ fun interface Solver {
 }
 
 private sealed class Force {
-    data class Yes(val proofPly: Int, val nodes: Int) : Force()
-    data class No(val nodes: Int) : Force()
+    data class Yes(val proofPly: Int, val nodes: Int, val zone: Set<Point> = emptySet()) : Force()
+    data class No(val nodes: Int, val zone: Set<Point> = emptySet()) : Force()
     data object Unknown : Force()
     data object TimedOut : Force()
 }
@@ -59,10 +59,21 @@ class AlphaBetaSolver(
     private val maxDepth: Int = 48,
 ) : Solver {
     override suspend fun solve(input: SolverInput): SolverResult {
-        val search = Search(input.problem, input.budget, input.onPath)
-        if (input.lastBlack != null && isTenuki(input.lastBlack, input.problem.targets)) {
-            tenukiRefute(input, search)?.let { return it }
-        }
+        val guess = rankMovesByPlayout(
+            position = input.position,
+            toPlay = StoneColor.White,
+            problem = input.problem,
+            candidates = whiteCandidatePoints(input.position, input.problem),
+            random = kotlin.random.Random.Default,
+            playouts = 16,
+        ).firstOrNull()
+        val search = Search(
+            problem = input.problem,
+            budget = input.budget,
+            onPath = input.onPath,
+            hintWhite = input.hintWhite,
+            guess = guess,
+        )
         var proven: Force? = null
         var provenDepth = 0
         for (depth in 1..maxDepth) {
@@ -99,35 +110,23 @@ class AlphaBetaSolver(
     }
 }
 
-private suspend fun tenukiRefute(input: SolverInput, search: Search): SolverResult? {
-    val moves = actions(input.position, StoneColor.White, input.problem)
-    for (depth in 1..8) {
-        if (input.budget.expired()) return SolverResult.Timeout
-        for (action in moves) {
-            val next = applyAction(input.position, action, StoneColor.White, input.consecutivePasses) ?: continue
-            val child = search.canForce(next.first, StoneColor.Black, next.second, depth, listOf(action))
-            if (child is Force.TimedOut) return SolverResult.Timeout
-            if (child is Force.No) {
-                input.onPathsComplete()
-                return SolverResult.Refute(action)
-            }
-        }
-    }
-    return null
-}
-
 private class Search(
     private val problem: Problem,
     private val budget: Budget,
     private val onPath: (String) -> Unit,
+    private val hintWhite: Point?,
+    private val guess: Point?,
 ) {
+    private fun moves(position: Position, toPlay: StoneColor): List<Action> =
+        actions(position, toPlay, problem, hintWhite, guess)
+
     private val proven = HashMap<String, Force>()
     private val outcomes = HashMap<String, Outcome>()
     private val nodes = IntArray(1)
 
     suspend fun pickResist(input: SolverInput, proveDepth: Int): SolverResult {
         val scored = ArrayList<Triple<Action, Int, Int>>()
-        for (action in actions(input.position, StoneColor.White, problem)) {
+        for (action in moves(input.position, StoneColor.White)) {
             if (budget.expired()) return SolverResult.Timeout
             val next = applyAction(input.position, action, StoneColor.White, input.consecutivePasses) ?: continue
             var found: Force.Yes? = null
@@ -157,7 +156,7 @@ private class Search(
 
     suspend fun pickRefute(input: SolverInput, proveDepth: Int): SolverResult {
         val preventing = ArrayList<Action>()
-        for (action in actions(input.position, StoneColor.White, problem)) {
+        for (action in moves(input.position, StoneColor.White)) {
             if (budget.expired()) return SolverResult.Timeout
             val next = applyAction(input.position, action, StoneColor.White, input.consecutivePasses) ?: continue
             var child: Force = Force.Unknown
@@ -189,8 +188,10 @@ private class Search(
         val bothPassed = passes >= 2
         val outcome = cachedOutcome(position, bothPassed)
         val terminal = when {
-            problem.goal.isSuccess(outcome) -> Force.Yes(proofPly = 0, nodes = 1)
-            outcome != Outcome.Unsettled || bothPassed -> Force.No(nodes = 1)
+            problem.goal.isSuccess(outcome) ->
+                Force.Yes(proofPly = 0, nodes = 1, zone = terminalRelevanceZone(position, problem, outcome, bothPassed))
+            outcome != Outcome.Unsettled || bothPassed ->
+                Force.No(nodes = 1, zone = terminalRelevanceZone(position, problem, outcome, bothPassed))
             else -> null
         }
         if (terminal != null) {
@@ -198,8 +199,7 @@ private class Search(
                 val result = if (terminal is Force.Yes) "成功" else "失敗"
                 onPath(formatSearchPath(path, result))
             }
-            val key = ttKey(position, toPlay, passes)
-            proven[key] = terminal
+            proven[ttKey(position, toPlay, passes)] = stripZone(terminal)
             return terminal
         }
 
@@ -207,13 +207,13 @@ private class Search(
         proven[key]?.let { return it }
         if (depth <= 0) return Force.Unknown
 
-        val moves = actions(position, toPlay, problem)
+        val listed = moves(position, toPlay)
         val result = if (toPlay == StoneColor.Black) {
-            orMoves(position, passes, depth, moves, path)
+            orMoves(position, passes, depth, listed, path)
         } else {
-            andMoves(position, passes, depth, moves, path)
+            andMoves(position, passes, depth, listed, path)
         }
-        if (result is Force.Yes || result is Force.No) proven[key] = result
+        if (result is Force.Yes || result is Force.No) proven[key] = stripZone(result)
         return result
     }
 
@@ -228,12 +228,28 @@ private class Search(
         var sawTimeout = false
         var totalNodes = 0
         var allNo = true
-        for (action in moves) {
+        val noZones = ArrayList<Set<Point>>()
+        val pending = ArrayDeque(moves)
+        val searched = HashSet<Action>()
+        while (pending.isNotEmpty()) {
+            val action = pending.removeFirst()
+            if (!searched.add(action)) continue
             val next = applyAction(position, action, StoneColor.Black, passes) ?: continue
             when (val child = canForce(next.first, StoneColor.White, next.second, depth - 1, path + action)) {
                 is Force.TimedOut -> sawTimeout = true
-                is Force.Yes -> return Force.Yes(child.proofPly + 1, child.nodes)
-                is Force.No -> totalNodes += child.nodes
+                is Force.Yes -> return Force.Yes(
+                    child.proofPly + 1,
+                    child.nodes,
+                    dilate(child.zone, position, action),
+                )
+                is Force.No -> {
+                    totalNodes += child.nodes
+                    noZones += child.zone
+                    if (isNullMove(action, child.zone)) {
+                        pending.clear()
+                        pending.addAll(retainMustPlay(moves, child.zone, searched))
+                    }
+                }
                 Force.Unknown -> {
                     anyUnknown = true
                     allNo = false
@@ -243,7 +259,7 @@ private class Search(
         return when {
             sawTimeout -> Force.TimedOut
             anyUnknown -> Force.Unknown
-            allNo -> Force.No(totalNodes)
+            allNo -> Force.No(totalNodes, dilate(noZones.flatten().toSet(), position))
             else -> Force.Unknown
         }
     }
@@ -260,17 +276,27 @@ private class Search(
         var worstPly = 0
         var totalNodes = 0
         var allYes = true
-        for (action in moves) {
+        val yesZones = ArrayList<Set<Point>>()
+        val pending = ArrayDeque(moves)
+        val searched = HashSet<Action>()
+        while (pending.isNotEmpty()) {
+            val action = pending.removeFirst()
+            if (!searched.add(action)) continue
             val next = applyAction(position, action, StoneColor.White, passes) ?: continue
             when (val child = canForce(next.first, StoneColor.Black, next.second, depth - 1, path + action)) {
                 is Force.TimedOut -> {
                     sawTimeout = true
                     allYes = false
                 }
-                is Force.No -> return Force.No(child.nodes)
+                is Force.No -> return Force.No(child.nodes, dilate(child.zone, position, action))
                 is Force.Yes -> {
                     totalNodes += child.nodes
                     if (child.proofPly + 1 > worstPly) worstPly = child.proofPly + 1
+                    yesZones += child.zone
+                    if (isNullMove(action, child.zone)) {
+                        pending.clear()
+                        pending.addAll(retainMustPlay(moves, child.zone, searched))
+                    }
                 }
                 Force.Unknown -> {
                     anyUnknown = true
@@ -281,9 +307,15 @@ private class Search(
         return when {
             sawTimeout -> Force.TimedOut
             anyUnknown -> Force.Unknown
-            allYes -> Force.Yes(worstPly, totalNodes)
+            allYes -> Force.Yes(worstPly, totalNodes, dilate(yesZones.flatten().toSet(), position))
             else -> Force.Unknown
         }
+    }
+
+    private fun stripZone(result: Force): Force = when (result) {
+        is Force.Yes -> Force.Yes(result.proofPly, result.nodes)
+        is Force.No -> Force.No(result.nodes)
+        else -> result
     }
 
     private fun ttKey(position: Position, toPlay: StoneColor, passes: Int): String =
@@ -295,7 +327,13 @@ private class Search(
     }
 }
 
-internal fun actions(position: Position, toPlay: StoneColor, problem: Problem): List<Action> {
+internal fun actions(
+    position: Position,
+    toPlay: StoneColor,
+    problem: Problem,
+    hintWhite: Point? = null,
+    guess: Point? = null,
+): List<Action> {
     val targets = problem.targets
     val region = relevantEmptyPoints(position, targets)
     val pool = if (region.isEmpty()) position.playable else region
@@ -309,11 +347,14 @@ internal fun actions(position: Position, toPlay: StoneColor, problem: Problem): 
     }
     val saving = if (toPlay == StoneColor.White) immediateRefutations(position, problem, pool) else emptySet()
     val clamps = region - libertyFirst
-    val legal = (pool + saving).distinct().filter { position.play(it, toPlay) != null }
+    val extra = listOfNotNull(hintWhite, guess).filter { position.play(it, toPlay) != null }
+    val legal = (pool + saving + extra).distinct().filter { position.play(it, toPlay) != null }
         .ifEmpty { position.legalMoves(toPlay) }
     val ordered = legal.sortedWith(
         compareByDescending<Point> {
             when {
+                toPlay == StoneColor.White && it == hintWhite -> 6
+                toPlay == StoneColor.White && it == guess -> 5
                 it in saving -> 4
                 isCapture(position, it, toPlay) -> 3
                 it in clamps -> 2
@@ -323,13 +364,6 @@ internal fun actions(position: Position, toPlay: StoneColor, problem: Problem): 
         }.thenBy { it },
     )
     return ordered.map { Action.Move(it) } + Action.Pass
-}
-
-internal fun isTenuki(point: Point, targets: Set<Point>, minDistance: Int = 3): Boolean {
-    if (targets.isEmpty()) return false
-    return targets.all { target ->
-        maxOf(kotlin.math.abs(point.file - target.file), kotlin.math.abs(point.rank - target.rank)) >= minDistance
-    }
 }
 
 internal fun immediateRefutations(
@@ -346,7 +380,7 @@ internal fun immediateRefutations(
     return out
 }
 
-private fun isCapture(position: Position, point: Point, toPlay: StoneColor): Boolean {
+internal fun isCapture(position: Position, point: Point, toPlay: StoneColor): Boolean {
     for (n in position.neighbors(point)) {
         if (position.stones[n] != toPlay.opposite) continue
         if (position.liberties(position.stringAt(n)).size == 1) return true

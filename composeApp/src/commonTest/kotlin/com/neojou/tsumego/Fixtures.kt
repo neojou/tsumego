@@ -46,6 +46,22 @@ fun cornerProblem(
     return Problem(rect, edges, stones(black, white), goal, targets(targets))
 }
 
+/**
+ * Kill problem whose 開局白活點 is C5 (straight-three vital: two eyes B5/D5).
+ * Black A1 is a decoy in atari so that after black plays B5, capturing at A2
+ * is a smaller-coordinate capture than C5 — without the hint, A2 would be first.
+ */
+fun openingWhiteLifeProblem(): Problem = boxedProblem(
+    left = "A",
+    right = "D",
+    bottom = 1,
+    top = 6,
+    black = "A1",
+    white = "A3,A4,A5,A6,B1,B4,B6,C4,C6,D4,D6",
+    goal = Goal.Kill,
+    targets = "A3,A4,A5,A6,B4,B6,C4,C6,D4,D6",
+)
+
 fun boxedProblem(
     left: String,
     right: String,

@@ -4,6 +4,7 @@ import com.neojou.tsumego.board.Goal
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
+
 class PlayCopyTest {
     @Test
     fun killHeadingIsBlackFirstKillWhite() {
@@ -27,6 +28,11 @@ class PlayCopyTest {
     fun searchPathCountLabelShowsActualTotalWhenTruncated() {
         assertEquals("搜尋路徑數目： 12", searchPathCountLabel(displayed = 12, total = 12))
         assertEquals("搜尋路徑數目： 2500（列出 1000）", searchPathCountLabel(displayed = 1000, total = 2500))
+    }
+
+    @Test
+    fun redoLabelIsRedo() {
+        assertEquals("重做", redoLabel())
     }
 
     @Test

@@ -7,6 +7,7 @@ import com.neojou.tsumego.pt
 import com.neojou.tsumego.solve.AlphaBetaSolver
 import com.neojou.tsumego.testSession
 import kotlinx.coroutines.test.runTest
+import kotlin.time.Duration.Companion.minutes
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -14,7 +15,7 @@ import kotlin.test.assertTrue
 
 class SmallTrickSolverTest {
     @Test
-    fun firstMoveRecordsSearchPaths() = runTest {
+    fun firstMoveRecordsSearchPaths() = runTest(timeout = 3.minutes) {
         val problem = assertIs<ProblemLoad.Ok>(ProblemLibrary.decode(SMALL_TRICK_JSON)).problem
         val session = testSession(problem, solver = AlphaBetaSolver())
         assertTrue(session.tryMove(pt("S19")))

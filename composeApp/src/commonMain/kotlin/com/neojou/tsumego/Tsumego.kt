@@ -56,6 +56,7 @@ import com.neojou.tsumego.play.PlayStatus
 import com.neojou.tsumego.play.Session
 import com.neojou.tsumego.play.numberedSearchPaths
 import com.neojou.tsumego.play.playHeading
+import com.neojou.tsumego.play.redoLabel
 import com.neojou.tsumego.play.searchPathCountLabel
 import kotlinx.coroutines.delay
 import kotlin.time.TimeSource
@@ -226,8 +227,17 @@ private fun PlayScreen(session: Session) {
                     Text("    從路徑中思考最強應手...", style = MaterialTheme.typography.bodyMedium)
                 }
             }
-            PlayStatus.Success -> Text("成功", style = MaterialTheme.typography.bodyLarge)
-            PlayStatus.Failure -> Text("失敗", style = MaterialTheme.typography.bodyLarge)
+            PlayStatus.Success, PlayStatus.Failure -> Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    if (snap.status == PlayStatus.Success) "成功" else "失敗",
+                    style = MaterialTheme.typography.bodyLarge,
+                )
+                Button(onClick = { session.redo() }) { Text(redoLabel()) }
+                OutlinedButton(onClick = { session.undo() }, enabled = snap.canUndo) { Text("悔棋") }
+            }
         }
         Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             BoardView(

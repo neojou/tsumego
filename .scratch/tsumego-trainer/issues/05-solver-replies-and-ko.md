@@ -15,4 +15,4 @@
 
 ## Answer
 
-`AlphaBetaSolver` answers 應手 / 反駁手。`searchPathCount` 是實際走完的條數，列表最多列 1000。黑遠離目標棋串時先驗證白在戰場的反駁。不設時限（ADR-0019、0021）。
+`AlphaBetaSolver` answers 應手 / 反駁手。`searchPathCount` 是實際走完的條數，列表最多列 1000。開局算一次開局白活點，之後搜尋先驗證白下該點；蒙地卡羅只猜順序。不設時限（ADR-0019、0022）。

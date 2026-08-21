@@ -1,9 +1,12 @@
 package com.neojou.tsumego.play
 
 import com.neojou.tsumego.board.Goal
+import com.neojou.tsumego.board.Point
+import com.neojou.tsumego.board.Position
 import com.neojou.tsumego.board.StoneColor
 import com.neojou.tsumego.cornerProblem
 import com.neojou.tsumego.library.Samples
+import com.neojou.tsumego.openingWhiteLifeProblem
 import com.neojou.tsumego.pt
 import com.neojou.tsumego.ImmediateTimeoutSolver
 import com.neojou.tsumego.solve.Action
@@ -11,8 +14,11 @@ import com.neojou.tsumego.solve.AlphaBetaSolver
 import com.neojou.tsumego.solve.Solver
 import com.neojou.tsumego.solve.SolverInput
 import com.neojou.tsumego.solve.SolverResult
-import com.neojou.tsumego.solve.isTenuki
+import com.neojou.tsumego.solve.actions
+import com.neojou.tsumego.solve.findOpeningWhiteLife
+import com.neojou.tsumego.solve.rankMovesByPlayout
 import com.neojou.tsumego.testSession
+import kotlin.random.Random
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -122,11 +128,78 @@ class SessionSolverTest {
     }
 
     @Test
-    fun r12IsATenukiFromTheUpperRightFight() {
-        val targets = setOf(pt("R17"), pt("R18"), pt("S16"), pt("T18"))
-        assertTrue(isTenuki(pt("R12"), targets))
-        assertTrue(isTenuki(pt("O13"), targets))
-        assertTrue(!isTenuki(pt("S19"), targets))
+    fun openingWhiteLifeIsTheVitalEyePoint() {
+        assertEquals(pt("C5"), findOpeningWhiteLife(openingWhiteLifeProblem()))
+    }
+
+    @Test
+    fun whiteActionsVerifyOpeningLifeBeforeADecoyCapture() {
+        val problem = openingWhiteLifeProblem()
+        val afterBlack = requireNotNull(Position.initial(problem).play(pt("B5"), StoneColor.Black))
+        val hint = findOpeningWhiteLife(problem)
+        val ordered = actions(afterBlack, StoneColor.White, problem, hintWhite = hint)
+        assertEquals(Action.Move(pt("C5")), ordered.first(), ordered.toString())
+    }
+
+    @Test
+    fun sessionPassesOpeningWhiteLifeIntoEverySearch() = runTest {
+        var seen: Point? = null
+        val solver = object : Solver {
+            override suspend fun solve(input: SolverInput): SolverResult {
+                seen = input.hintWhite
+                return SolverResult.Resist(Action.Pass)
+            }
+        }
+        val session = testSession(openingWhiteLifeProblem(), solver = solver)
+        assertTrue(session.tryMove(pt("B5")))
+        session.waitForIdle()
+        assertEquals(pt("C5"), seen)
+    }
+
+    @Test
+    fun extraFarStoneDoesNotChangeTheRefutation() = runTest {
+        val base = openingWhiteLifeProblem()
+        val extra = base.copy(stones = base.stones + (pt("C1") to StoneColor.Black))
+        val a = testSession(base, solver = AlphaBetaSolver(maxDepth = 12))
+        val b = testSession(extra, solver = AlphaBetaSolver(maxDepth = 12))
+        assertTrue(a.tryMove(pt("D1")))
+        assertTrue(b.tryMove(pt("D1")))
+        a.waitForIdle()
+        b.waitForIdle()
+        assertEquals(a.state.value.status, b.state.value.status)
+        assertEquals(a.state.value.lastMove, b.state.value.lastMove)
+    }
+
+    @Test
+    fun farWhiteRepliesAreNotAllSearchedAfterANullMove() = runTest {
+        val problem = openingWhiteLifeProblem()
+        val session = testSession(problem, solver = AlphaBetaSolver(maxDepth = 12))
+        assertTrue(session.tryMove(pt("C5")))
+        session.waitForIdle()
+        val firstWhite = session.state.value.searchPaths.mapNotNull { path ->
+            Regex("""^白下 ([A-T]\\d+)""").find(path)?.groupValues?.get(1)
+        }.toSet()
+        val far = setOf("C1", "D1", "B2", "C2")
+        assertTrue(
+            firstWhite.intersect(far).size <= 1,
+            "equivalent 空手 should not each grow a 搜尋路徑, firstWhite=$firstWhite",
+        )
+    }
+
+    @Test
+    fun monteCarloRanksTheImmediateLivingMoveFirst() {
+        val problem = openingWhiteLifeProblem()
+        val position = Position.initial(problem)
+        val candidates = listOf(pt("A2"), pt("B5"), pt("C5"), pt("D5"), pt("B3"))
+        val ranked = rankMovesByPlayout(
+            position = position,
+            toPlay = StoneColor.White,
+            problem = problem,
+            candidates = candidates,
+            random = Random(1),
+            playouts = 8,
+        )
+        assertEquals(pt("C5"), ranked.first())
     }
 
     @Test
