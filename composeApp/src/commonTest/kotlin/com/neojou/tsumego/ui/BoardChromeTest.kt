@@ -73,6 +73,19 @@ class BoardChromeTest {
     }
 
     @Test
+    fun wasmImagePlaceholderMustNotPixelWalkTheWood() {
+        // compose-resources ResourceState.web uses ImageBitmap(1, 1) as the first frame.
+        val placeholderDraws = woodTileDraws(areaWidth = 800f, areaHeight = 800f, imageWidth = 1, imageHeight = 1)
+        assertTrue(
+            placeholderDraws <= 4,
+            "1×1 albedo placeholder tiled $placeholderDraws times; wasm main thread freezes",
+        )
+        assertTrue(!albedoReady(1, 1))
+        assertTrue(albedoReady(1024, 1024))
+        assertEquals(1, woodTileDraws(800f, 800f, 1024, 1024))
+    }
+
+    @Test
     fun playStonesUseAShallowOverheadTilt() {
         // 12–18° from overhead → flattenY = cos(tilt) ∈ [cos18, cos12]
         val flatten = stoneFlattenY(oblique = true)

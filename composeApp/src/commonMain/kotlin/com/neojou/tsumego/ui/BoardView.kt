@@ -106,6 +106,28 @@ fun wallCutColor(): Color = Color(0xFF1A1510)
 
 fun gobanThickness(spacing: Float): Float = spacing * 0.14f
 
+/**
+ * Compose Multiplatform `imageResource` on web starts at [ImageBitmap] 1×1
+ * (`emptyImageBitmap`) until the fetch+decode finishes. Desktop `runBlocking`
+ * never shows that placeholder.
+ */
+fun albedoReady(width: Int, height: Int): Boolean = width >= 16 && height >= 16
+
+fun woodTileDraws(areaWidth: Float, areaHeight: Float, imageWidth: Int, imageHeight: Int): Int {
+    if (!albedoReady(imageWidth, imageHeight)) return 0
+    var n = 0
+    var y = 0f
+    while (y < areaHeight - 0.5f) {
+        var x = 0f
+        while (x < areaWidth - 0.5f) {
+            n++
+            x += imageWidth.toFloat()
+        }
+        y += imageHeight.toFloat()
+    }
+    return n
+}
+
 fun gridRect(geom: BoardGeom): Rect {
     val spacing = geom.spacing
     val origin = geom.origin
@@ -254,7 +276,7 @@ fun BoardView(
             val wood = woodRect(geom, edges)
             drawRect(tableColor(), topLeft = Offset.Zero, size = androidx.compose.ui.geometry.Size(size.width, size.height))
             drawGobanSlab(wood, spacing)
-            if (hinoki != null) {
+            if (hinoki != null && albedoReady(hinoki.width, hinoki.height)) {
                 clipRect(wood.left, wood.top, wood.right, wood.bottom) {
                     drawTiled(hinoki, wood)
                 }
@@ -525,8 +547,9 @@ private fun DrawScope.drawCoordinates(geom: BoardGeom, measurer: TextMeasurer) {
 }
 
 private fun DrawScope.drawTiled(image: ImageBitmap, area: Rect) {
-    val tw = image.width.coerceAtLeast(1)
-    val th = image.height.coerceAtLeast(1)
+    if (!albedoReady(image.width, image.height)) return
+    val tw = image.width
+    val th = image.height
     var y = area.top
     while (y < area.bottom - 0.5f) {
         var x = area.left
@@ -576,7 +599,7 @@ private fun DrawScope.drawClamStone(
     val oval = Path().apply {
         addOval(Rect(drawn.x - rx, drawn.y - ry, drawn.x + rx, drawn.y + ry))
     }
-    if (albedo != null) {
+    if (albedo != null && albedoReady(albedo.width, albedo.height)) {
         clipPath(oval) {
             drawImage(
                 image = albedo,
