@@ -62,10 +62,25 @@ data class BoardGeom(
         return if (dx * dx + dy * dy <= (spacing * 0.45f) * (spacing * 0.45f)) point else point
     }
 
-    fun fileLabelBottom(): Float = center(Point(rect.left, rect.bottom)).y + spacing * 0.70f
+    fun fileLabelBottom(): Float =
+        center(Point(rect.left, rect.bottom)).y + fileLabelOffset(spacing) + coordinateFontSize(spacing)
 
-    fun rankLabelRight(): Float = center(Point(rect.right, rect.top)).x + spacing * 0.70f
+    fun rankLabelRight(): Float =
+        center(Point(rect.right, rect.top)).x + rankLabelOffset(spacing) + coordinateFontSize(spacing)
 }
+
+fun fileLabelOffset(spacing: Float): Float = spacing * 0.58f
+
+fun rankLabelOffset(spacing: Float): Float = spacing * 0.52f
+
+fun coordinateFontSize(spacing: Float): Float = spacing * 0.24f
+
+/** Sp passed to Canvas TextStyle. Must be canvas-px / density, not raw px. */
+fun coordinateFontSp(spacing: Float, density: Float): Float =
+    coordinateFontSize(spacing) / density.coerceAtLeast(0.01f)
+
+fun coordinatePaintPx(spacing: Float, density: Float, fontScale: Float = 1f): Float =
+    coordinateFontSp(spacing, density) * fontScale * density
 
 fun targetListLabel(targets: Set<Point>): String =
     if (targets.isEmpty()) "目標: （未標）"
@@ -161,7 +176,7 @@ fun isOnWood(geom: BoardGeom, edges: Edges, x: Float, y: Float): Boolean =
 fun boardLayout(canvasWidth: Float, canvasHeight: Float, rect: BoardRect): BoardGeom {
     val fileGaps = (rect.right - rect.left).coerceAtLeast(1)
     val rankGaps = (rect.top - rect.bottom).coerceAtLeast(1)
-    val labelFrac = 0.70f
+    val labelFrac = 0.86f
     val woodFrac = 0.55f
     val spacing = min(
         canvasWidth / (fileGaps + woodFrac + labelFrac),
@@ -375,7 +390,10 @@ private fun DrawScope.drawOverlayGrid(overlay: OverlayLayout, edges: Edges) {
 
 private fun DrawScope.drawOverlayCoordinates(overlay: OverlayLayout, measurer: TextMeasurer) {
     val spacing = min(overlay.spacingX, overlay.spacingY)
-    val style = TextStyle(color = overlayCoordinateInk(), fontSize = (spacing * 0.28f).sp)
+    val style = TextStyle(
+        color = overlayCoordinateInk(),
+        fontSize = (spacing * 0.28f / density.coerceAtLeast(0.01f)).sp,
+    )
     for (file in overlay.rect.files) {
         val p = overlay.center(Point(file, overlay.rect.bottom))
         val label = Point.FILE_CHARS[file].toString()
@@ -531,18 +549,18 @@ private fun DrawScope.drawWoodBevel(wood: Rect) {
 }
 
 private fun DrawScope.drawCoordinates(geom: BoardGeom, measurer: TextMeasurer) {
-    val style = TextStyle(color = coordinateInk(), fontSize = (geom.spacing * 0.24f).sp)
+    val style = TextStyle(color = coordinateInk(), fontSize = coordinateFontSp(geom.spacing, density).sp)
     for (file in geom.rect.files) {
         val p = geom.center(Point(file, geom.rect.bottom))
         val label = Point.FILE_CHARS[file].toString()
         val layout = measurer.measure(label, style)
-        drawText(layout, topLeft = Offset(p.x - layout.size.width / 2f, p.y + geom.spacing * 0.58f))
+        drawText(layout, topLeft = Offset(p.x - layout.size.width / 2f, p.y + fileLabelOffset(geom.spacing)))
     }
     for (rank in geom.rect.ranks) {
         val p = geom.center(Point(geom.rect.right, rank))
         val label = rank.toString()
         val layout = measurer.measure(label, style)
-        drawText(layout, topLeft = Offset(p.x + geom.spacing * 0.52f, p.y - layout.size.height / 2f))
+        drawText(layout, topLeft = Offset(p.x + rankLabelOffset(geom.spacing), p.y - layout.size.height / 2f))
     }
 }
 
