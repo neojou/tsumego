@@ -13,7 +13,7 @@
 | 解題入口、AND–OR、最長抵抗、報路徑 | `composeApp/src/commonMain/kotlin/com/neojou/tsumego/solve/Solver.kt` | `AlphaBetaSolver`、`Search.canForce`、`pickResist`／`pickRefute`、`formatSearchPath` |
 | 相關區、空手、必應區、區形 | `…/solve/RelevanceZone.kt` | `terminalRelevanceZone`、`dilate`、`isNullMove`、`retainMustPlay`、`zonePattern` |
 | 蒙地卡羅猜順序 | `…/solve/MonteCarlo.kt` | **有程式，未接入** `AlphaBetaSolver`／`Session` |
-| 終局分類、做活點 | `…/classify/Classify.kt` | `classify`、`firstOwnerMoveToTwoEyes`、`ownerCanForceLife`、`isAwayFromTargets` |
+| 終局分類、做活點、劫 | `…/classify/Classify.kt` | `classify`、`classifyKo`、`resolveKos`、`ownerCanForceLife`、`firstOwnerMoveToTwoEyes` |
 | 對局：何時搜、路徑串流、應手落地 | `…/play/Session.kt` | `launchSearch`、`onPath`、`replyCache`、`DISPLAYED_SEARCH_PATHS` |
 | 殼：決策樹 | `…/play/PlayCopy.kt`、`…/play/DecisionTree.kt`、`…/Tsumego.kt` | 標題決策樹、三層縮排、不編號 |
 
@@ -66,6 +66,8 @@ canForce(pos, toPlay, passes, depth, path):
   o = classify(pos)
   if 題型過:     emit 搜尋路徑; return Yes(ply=0, zone=terminalZone)
   if 終局 or 雙方已停: emit 搜尋路徑; return No(zone=terminalZone)
+  # 終局含劫殺。v1 殺棋打劫不算過，故 KoKill → No → 決策樹白勝。
+  # 分類必須：目標還能做活時不要因旁劫凍成劫殺（否則 T19 有 R19 可提仍變白勝葉子）。
   if TT hit: return TT
   if depth == 0: return Unknown
   if Black: r = orMoves(...)   # 任一 Yes 即可；保留最短 proofPly
@@ -91,6 +93,61 @@ andMoves:  # 白
 候選手 `actions`：氣區空點（`relevantEmptyPoints`，不是相關區）、根上做活點、立刻讓黑無法過的白棋、提子、夾氣、氣、最後停。`guess` 參數現在沒人傳。
 
 路徑：`formatSearchPath` 結尾是黑勝／白勝。含停的路徑不報。Session 串流 `onPath`（計走完條數）與 `onPv`（決策樹葉子）；證明完 `onPathsComplete` 才 `pickingReply`。
+
+---
+
+## 劫殺：怎麼判定、決策樹怎麼當葉子
+
+決策樹**不自己判斷劫殺**。葉子只看 `classify` 回的終局，再對題型表（ADR-0003）：
+
+```
+o = classify(pos)
+if goal.isSuccess(o):     黑勝 / Force.Yes     # 殺棋只認無條件死
+else if o 已是終局:       白勝 / Force.No      # 含劫殺、無條件活、雙活、劫活
+else:                     繼續展開
+```
+
+v1 殺棋：劫殺 **不是過**（`Goal.Kill.isSuccess(KoKill) == false`）。因此一旦分類成劫殺，搜尋當葉子、決策樹寫 **白勝**、對局是 **失敗**。這不是顯示 bug；若葉子不該出現，要改的是分類（ADR-0002、0009、0014），不是 AND–OR。
+
+### 何時才叫劫殺
+
+牆上沒有劫材，不當成對局去找劫材（ADR-0002）。分類用 **贏劫／輸劫** 两次假設（ADR-0009），不在樹上演劫鬥。
+
+入口：`classify` 在 Benson、雙活之後，若 `hasKoCandidate()` 才進 `classifyKo`。
+
+```
+hasKoCandidate:           盤上有「一子一氣」的串（可能還不是可提的單劫）
+simpleKoCaptures(toPlay): 對方一子一氣，提點提完後己方也是一子一氣 → 真單劫提
+
+classifyKo(pos, targets):
+  blackKos = simpleKoCaptures(Black)
+  whiteKos = simpleKoCaptures(White)
+  if both empty: return null          # 只有一子一氣、做不成單劫提 → 不當劫
+
+  winBlack = resolveKos(pos, Black)   # 假設黑贏所有單劫（最多 8 步）
+  winWhite = resolveKos(pos, White)
+  blackLife = basicLife(winBlack)     # Benson 活 / 雙活 / 其它；提淨算死
+  whiteLife = basicLife(winWhite)
+
+  目標只剩黑:
+    黑贏劫能活、白贏劫不能活 → 劫活
+    兩邊假設都能活 → 無條件活
+  目標只剩白:
+    兩邊假設都能活 → 無條件活
+    目標已提淨 → 無條件死
+    目標色仍能往兩眼走 (ownerCanForceLife) → null（未定，繼續搜）
+    否則 → 劫殺                         # 做不成活 + 單劫仍在；不能落到無條件死
+  雙方已停且两次假設都是雙活 → 雙活
+  其它 → null
+```
+
+`resolveKos(winner)`：有己方可提的單劫就提（忽略同型反覆）；否則對方可提時，用 `fillKoForWinner` 當成己方已佔劫、拔掉對方那一子。`basicLife` **不再走** `classifyKo`，只看提淨／Benson／雙活。
+
+### 和決策樹的接縫（7K 的坑）
+
+殺棋目標是白。舊規則「盤上有單劫且白目標還在 → 一律劫殺」會把 **旁劫** 當成整題終局：7K 黑 S17 後白 T19，T17/T18 是單劫，但 S18–S19–T19 只剩氣 R19，黑提三子與那劫無關。分類成劫殺 → `Force.No` → 樹上 `白下 T17 -> 黑下 T18 -> 白下 T19 -> 白勝`。
+
+現況：白目標 **還能做活** 則 `classifyKo` 回 `null`，局面未定，R19 會被展開。白目標 **做不成兩眼** 且單劫仍在才劫殺（8K 提劫那條：淨殺才過，打劫失敗）。測：`Kill7BugLoopTest`、`DeadShapeTest.kill8KoTakeIsKoKillNotUnconditionalDead`。
 
 ---
 
@@ -178,6 +235,6 @@ on enter: if proven[ttKey] return it
 
 ## 改搜尋時從哪裡下手
 
-1. 證明對不對：`canForce`／分類／相關區；測 `SessionSolverTest`、`SmallTrickSolverTest`、`Kill8BugLoopTest`
+1. 證明對不對：`canForce`／分類／劫殺／相關區；測 `SessionSolverTest`、`SmallTrickSolverTest`、`Kill8BugLoopTest`、`Kill7BugLoopTest`
 2. 應手穩不穩：`resistOrder`、`pickRefute`；測最長抵抗與做活點
 3. 要更快：先量 `onPath` 條數與節點，再考慮接上 `zonePattern`、加深 TT、或新 `Solver`（df-pn 等）。顯示收束不會讓搜尋變快

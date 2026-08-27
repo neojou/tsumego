@@ -369,7 +369,9 @@ private fun classifyKo(
     if (colors == setOf(StoneColor.White)) {
         if (blackWins == BasicLife.Live && whiteWins == BasicLife.Live) return Outcome.UnconditionalLive
         if (onBoard.isEmpty()) return Outcome.UnconditionalDead
-        // 劫還在、目標仍在盤上：劫殺，不能靠做不成兩眼當成無條件死。
+        // 還能往兩眼走時，盤上另有單劫不能把整題凍成劫殺（7K：R19 仍可提）。
+        if (ownerCanForceLife(position, targets)) return null
+        // 做不成活且劫仍在：劫殺，不能落到無條件死（v1 淨殺才過）。
         return Outcome.KoKill
     }
     if (bothPassed && blackWins == BasicLife.Seki && whiteWins == BasicLife.Seki) return Outcome.Seki
