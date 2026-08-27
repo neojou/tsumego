@@ -29,6 +29,14 @@ class SampleFileTest {
         val sample = Samples.all.first { it.name == "8K 殺棋" }
         assertEquals(ok.problem, sample.problem)
     }
+
+    @Test
+    fun listedSampleMatchesDocs7KKillFile() {
+        val text = loadProblemFile("7K-kill.tsumego.json")
+        val ok = assertIs<ProblemLoad.Ok>(ProblemLibrary.decode(text))
+        val sample = Samples.all.first { it.name == "7K 老鼠偷油" }
+        assertEquals(ok.problem, sample.problem)
+    }
 }
 
 private fun loadProblemFile(name: String): String {

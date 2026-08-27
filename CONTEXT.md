@@ -29,7 +29,7 @@ _Avoid_: 最佳應手 as if unique, 解答
 _Avoid_: 實盤照片, 棋盤拍照
 
 **題目檔**:
-題目的可攜存檔（Q20 欄位）。Desktop 與 Wasm 都能開、存。不是棋譜圖。v1 題型必須是殺棋，否則拒絕載入。File → Samples 的內建題也是題目檔；v1 列「15K 殺棋」、「13K 殺棋」與「8K 殺棋」。
+題目的可攜存檔（Q20 欄位）。Desktop 與 Wasm 都能開、存。不是棋譜圖。v1 題型必須是殺棋，否則拒絕載入。File → Samples 的內建題也是題目檔；v1 列「15K 殺棋」、「13K 殺棋」、「8K 殺棋」與「7K 老鼠偷油」。
 _Avoid_: SGF as the native store, 棋譜
 
 ## 題目盤

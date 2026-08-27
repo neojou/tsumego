@@ -125,7 +125,7 @@ class ProblemJsonTest {
 
     @Test
     fun listedSamplesAreKillOnly() {
-        assertEquals(listOf("15K 殺棋", "13K 殺棋", "8K 殺棋"), Samples.all.map { it.name })
+        assertEquals(listOf("15K 殺棋", "13K 殺棋", "8K 殺棋", "7K 老鼠偷油"), Samples.all.map { it.name })
         assertTrue(Samples.all.none { "做活" in it.name })
         assertTrue(Samples.all.none { it.name == "小殺棋" })
         assertTrue(Samples.all.none { it.name == "牆與真盤邊" })
@@ -176,6 +176,24 @@ class ProblemJsonTest {
         assertTrue(pt("T16") in sample.targets)
         assertTrue(pt("R19") in sample.targets)
         assertTrue(pt("Q19") !in sample.targets)
+    }
+
+    @Test
+    fun listedSampleIsThe7KKillProblem() {
+        val sample = Samples.all.first { it.name == "7K 老鼠偷油" }.problem
+        assertEquals(Point.fileIndex('P'), sample.rect.left)
+        assertEquals(Point.fileIndex('T'), sample.rect.right)
+        assertEquals(13, sample.rect.bottom)
+        assertEquals(19, sample.rect.top)
+        assertEquals(StoneColor.Black, sample.stones[pt("Q14")])
+        assertEquals(StoneColor.Black, sample.stones[pt("T14")])
+        assertEquals(StoneColor.White, sample.stones[pt("S19")])
+        assertNull(sample.stones[pt("T15")])
+        assertNull(sample.stones[pt("T16")])
+        assertTrue(pt("R15") in sample.targets)
+        assertTrue(pt("S19") in sample.targets)
+        assertTrue(pt("T15") !in sample.targets)
+        assertTrue(pt("T14") !in sample.targets)
     }
 
     @Test

@@ -50,7 +50,7 @@ class ShellMenuTest {
         )
         assertEquals(listOf("Open", "Save", "Samples"), items.map { it.label })
         val nested = items.flatMap { it.children }.map { it.label }
-        assertEquals(listOf("15K 殺棋", "13K 殺棋", "8K 殺棋"), nested)
+        assertEquals(listOf("15K 殺棋", "13K 殺棋", "8K 殺棋", "7K 老鼠偷油"), nested)
         assertTrue("角上做活" !in nested)
         assertTrue("小殺棋" !in nested)
         assertTrue("牆與真盤邊" !in nested)
