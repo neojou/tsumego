@@ -63,7 +63,9 @@ import com.neojou.tsumego.play.Session
 import com.neojou.tsumego.play.StoneSoundKind
 import com.neojou.tsumego.play.playStoneSound
 import com.neojou.tsumego.play.stoneFx
-import com.neojou.tsumego.play.numberedSearchPaths
+import com.neojou.tsumego.play.decisionTreeTitle
+import com.neojou.tsumego.play.DecisionTreeLine
+import com.neojou.tsumego.play.DecisionTreeView
 import com.neojou.tsumego.play.aboutProductSp
 import com.neojou.tsumego.play.aboutSummarySp
 import com.neojou.tsumego.play.aboutTitle
@@ -246,7 +248,7 @@ private fun PlayScreen(session: Session) {
                 }
                 Text("目前動作 :", style = MaterialTheme.typography.bodyMedium)
                 Text(
-                    searchPathCountLabel(displayed = snap.searchPaths.size, total = snap.searchPathCount),
+                    searchPathCountLabel(displayed = snap.decisionTree.leafCount, total = snap.searchPathCount),
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(start = 16.dp),
                 )
@@ -283,7 +285,7 @@ private fun PlayScreen(session: Session) {
                 modifier = Modifier.weight(1f).fillMaxHeight(),
             )
             SearchPathPane(
-                paths = snap.searchPaths,
+                tree = snap.decisionTree,
                 modifier = Modifier.width(340.dp).fillMaxHeight(),
             )
         }
@@ -291,11 +293,10 @@ private fun PlayScreen(session: Session) {
 }
 
 @Composable
-private fun SearchPathPane(paths: List<String>, modifier: Modifier = Modifier) {
+private fun SearchPathPane(tree: DecisionTreeView, modifier: Modifier = Modifier) {
     val listState = rememberLazyListState()
-    val numbered = numberedSearchPaths(paths)
-    LaunchedEffect(paths.size) {
-        if (numbered.isNotEmpty()) listState.scrollToItem(numbered.lastIndex)
+    LaunchedEffect(tree.lines.size) {
+        if (tree.lines.isNotEmpty()) listState.scrollToItem(tree.lines.lastIndex)
     }
     Surface(
         modifier = modifier,
@@ -303,17 +304,17 @@ private fun SearchPathPane(paths: List<String>, modifier: Modifier = Modifier) {
         shape = RoundedCornerShape(2.dp),
     ) {
     Column(Modifier.padding(10.dp)) {
-        Text("搜尋路徑", style = MaterialTheme.typography.titleMedium)
+        Text(decisionTreeTitle(), style = MaterialTheme.typography.titleMedium)
         Box(Modifier.weight(1f).fillMaxWidth().padding(top = 8.dp)) {
             LazyColumn(
                 state = listState,
                 modifier = Modifier.fillMaxSize().padding(end = 14.dp),
             ) {
-                items(numbered) { line ->
+                items(tree.lines) { line: DecisionTreeLine ->
                     Text(
-                        line,
+                        line.text,
                         style = MaterialTheme.typography.bodyLarge,
-                        modifier = Modifier.padding(bottom = 6.dp),
+                        modifier = Modifier.padding(start = (line.indent * 16).dp, bottom = 6.dp),
                     )
                 }
             }

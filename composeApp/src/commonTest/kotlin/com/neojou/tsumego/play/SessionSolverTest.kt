@@ -56,12 +56,14 @@ class SessionSolverTest {
         val session = testSession(openingWhiteLifeProblem(), solver = solver)
         assertTrue(session.tryMove(pt("B5")))
         session.waitForIdle()
-        val paths = session.state.value.searchPaths
+        val snap = session.state.value
+        val paths = snap.searchPaths
         assertTrue(paths.isNotEmpty(), "expected 搜尋路徑")
         assertTrue(
             paths.none { "停" in it },
             paths.joinToString("\n"),
         )
+        assertTrue(snap.decisionTree.lines.none { "停" in it.text }, snap.decisionTree.lines.joinToString { it.text })
     }
 
     @Test
@@ -115,7 +117,7 @@ class SessionSolverTest {
         val finish = CompletableDeferred<Unit>()
         val solver = object : Solver {
             override suspend fun solve(input: SolverInput): SolverResult {
-                input.onPath("白下 B3 -> 黑下 A3 -> 結果 成功")
+                input.onPath("白下 B3 -> 黑下 A3 -> 黑勝")
                 started.complete(Unit)
                 finish.await()
                 return SolverResult.Resist(Action.Pass)
@@ -126,9 +128,48 @@ class SessionSolverTest {
         started.await()
         val waiting = session.state.value
         assertEquals(PlayStatus.WaitingForReply, waiting.status)
-        assertEquals(listOf("白下 B3 -> 黑下 A3 -> 結果 成功"), waiting.searchPaths)
+        assertEquals(listOf("白下 B3 -> 黑下 A3 -> 黑勝"), waiting.searchPaths)
         finish.complete(Unit)
         session.waitForIdle()
+    }
+
+    @Test
+    fun decisionTreeFillsFromPvWhileWaiting() = runTest {
+        val started = CompletableDeferred<Unit>()
+        val finish = CompletableDeferred<Unit>()
+        val solver = object : Solver {
+            override suspend fun solve(input: SolverInput): SolverResult {
+                input.onPath("白下 B3 -> 黑下 A3 -> 黑勝")
+                input.onPv(Action.Move(pt("B3")), Action.Move(pt("A3")), "黑勝", false)
+                started.complete(Unit)
+                finish.await()
+                return SolverResult.Resist(Action.Pass)
+            }
+        }
+        val session = testSession(openingWhiteLifeProblem(), solver = solver)
+        assertTrue(session.tryMove(pt("B5")))
+        started.await()
+        val tree = session.state.value.decisionTree
+        assertEquals(1, tree.pathCount)
+        assertEquals(1, tree.leafCount)
+        assertEquals("白下 B3", tree.lines[0].text)
+        assertEquals("黑下 A3", tree.lines[1].text)
+        assertEquals("黑勝", tree.lines[2].text)
+        finish.complete(Unit)
+        session.waitForIdle()
+    }
+
+    @Test
+    fun liveSolverDecisionTreeUsesWinsNotSuccess() = runTest {
+        val session = testSession(openingWhiteLifeProblem(), solver = solver)
+        assertTrue(session.tryMove(pt("B5")))
+        session.waitForIdle()
+        val texts = session.state.value.decisionTree.lines.joinToString("\n") { it.text }
+        assertTrue(session.state.value.decisionTree.leafCount > 0, "expected 決策樹, was:\n$texts")
+        assertTrue("黑勝" in texts || "白勝" in texts, texts)
+        assertTrue("成功" !in texts, texts)
+        assertTrue("失敗" !in texts, texts)
+        assertTrue(texts.lines().none { it.startsWith("1.") })
     }
 
     @Test
@@ -211,7 +252,7 @@ class SessionSolverTest {
         val solver = object : Solver {
             override suspend fun solve(input: SolverInput): SolverResult {
                 repeat(1005) { i ->
-                    input.onPath("白下 A1 -> 結果 失敗 #$i")
+                    input.onPath("白下 A1 -> 白勝 #$i")
                 }
                 input.onPathsComplete()
                 return SolverResult.Resist(Action.Pass)
@@ -231,7 +272,7 @@ class SessionSolverTest {
         val finish = CompletableDeferred<Unit>()
         val solver = object : Solver {
             override suspend fun solve(input: SolverInput): SolverResult {
-                input.onPath("白下 B3 -> 黑下 A3 -> 結果 成功")
+                input.onPath("白下 B3 -> 黑下 A3 -> 黑勝")
                 input.onPathsComplete()
                 started.complete(Unit)
                 finish.await()

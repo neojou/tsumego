@@ -43,6 +43,7 @@ data class SolverInput(
     val consecutivePasses: Int,
     val budget: Budget,
     val onPath: (String) -> Unit = {},
+    val onPv: (white: Action, black: Action?, continuation: String, replace: Boolean) -> Unit = { _, _, _, _ -> },
     val onPathsComplete: () -> Unit = {},
     val hintWhite: Point? = null,
     val blackPlayedAway: Boolean = false,
@@ -53,8 +54,17 @@ fun interface Solver {
 }
 
 private sealed class Force {
-    data class Yes(val proofPly: Int, val nodes: Int, val zone: Set<Point> = emptySet()) : Force()
-    data class No(val nodes: Int, val zone: Set<Point> = emptySet()) : Force()
+    data class Yes(
+        val proofPly: Int,
+        val nodes: Int,
+        val zone: Set<Point> = emptySet(),
+        val pv: List<Action> = emptyList(),
+    ) : Force()
+    data class No(
+        val nodes: Int,
+        val zone: Set<Point> = emptySet(),
+        val pv: List<Action> = emptyList(),
+    ) : Force()
     data object Unknown : Force()
     data object TimedOut : Force()
 }
@@ -68,7 +78,8 @@ class AlphaBetaSolver(
             val next = input.position.play(liveAt, StoneColor.White)
             if (next != null && ownerCanForceLife(next, input.problem.targets)) {
                 val action = Action.Move(liveAt)
-                input.onPath(formatSearchPath(listOf(action), "失敗"))
+                input.onPath(formatSearchPath(listOf(action), blackForces = false))
+                input.onPv(action, null, branchWinner(false), false)
                 input.onPathsComplete()
                 return SolverResult.Refute(action)
             }
@@ -77,6 +88,7 @@ class AlphaBetaSolver(
             problem = input.problem,
             budget = input.budget,
             onPath = input.onPath,
+            onPv = input.onPv,
             rootHintWhite = liveAt,
             rootKey = input.position.key,
         )
@@ -120,6 +132,7 @@ private class Search(
     private val problem: Problem,
     private val budget: Budget,
     private val onPath: (String) -> Unit,
+    private val onPv: (Action, Action?, String, Boolean) -> Unit,
     private val rootHintWhite: Point? = null,
     private val rootKey: String? = null,
 ) {
@@ -143,7 +156,7 @@ private class Search(
             val next = applyAction(input.position, action, StoneColor.White, input.consecutivePasses) ?: continue
             var found: Force.Yes? = null
             for (depth in 1..proveDepth) {
-                val child = canForce(next.first, StoneColor.Black, next.second, depth, listOf(action))
+                val child = canForce(next.first, StoneColor.Black, next.second, depth, listOf(action), record = true)
                 when (child) {
                     is Force.TimedOut -> return SolverResult.Timeout
                     is Force.Yes -> {
@@ -181,7 +194,7 @@ private class Search(
         for (black in moves(position, StoneColor.Black)) {
             if (budget.expired()) return null
             val afterBlack = applyAction(position, black, StoneColor.Black, passes) ?: continue
-            when (canForce(afterBlack.first, StoneColor.White, afterBlack.second, proveDepth - 1, listOf(white, black))) {
+            when (canForce(afterBlack.first, StoneColor.White, afterBlack.second, proveDepth - 1, listOf(white, black), record = false)) {
                 is Force.Yes -> win++
                 is Force.TimedOut -> return null
                 else -> Unit
@@ -240,6 +253,7 @@ private class Search(
         passes: Int,
         depth: Int,
         path: List<Action>,
+        record: Boolean = true,
     ): Force {
         nodes[0]++
         if ((nodes[0] and 7) == 0) {
@@ -257,9 +271,9 @@ private class Search(
             else -> null
         }
         if (terminal != null) {
-            if (path.isNotEmpty() && path.none { it is Action.Pass }) {
-                val result = if (terminal is Force.Yes) "成功" else "失敗"
-                onPath(formatSearchPath(path, result))
+            if (record && path.isNotEmpty() && path.none { it is Action.Pass }) {
+                onPath(formatSearchPath(path, blackForces = terminal is Force.Yes))
+                seedPv(path, blackForces = terminal is Force.Yes)
             }
             proven[ttKey(position, toPlay, passes)] = stripZone(terminal)
             return terminal
@@ -271,12 +285,21 @@ private class Search(
 
         val listed = moves(position, toPlay)
         val result = if (toPlay == StoneColor.Black) {
-            orMoves(position, passes, depth, listed, path)
+            orMoves(position, passes, depth, listed, path, record)
         } else {
-            andMoves(position, passes, depth, listed, path)
+            andMoves(position, passes, depth, listed, path, record)
         }
         if (result is Force.Yes || result is Force.No) proven[key] = stripZone(result)
         return result
+    }
+
+    private fun seedPv(path: List<Action>, blackForces: Boolean) {
+        emitPv(path[0], path.getOrNull(1), formatSearchPath(path.drop(2), blackForces), false)
+    }
+
+    private fun emitPv(white: Action, black: Action?, continuation: String, replace: Boolean) {
+        if ("停" in continuation) return
+        onPv(white, black, continuation, replace)
     }
 
     private suspend fun orMoves(
@@ -285,6 +308,7 @@ private class Search(
         depth: Int,
         moves: List<Action>,
         path: List<Action>,
+        record: Boolean,
     ): Force {
         var anyUnknown = false
         var sawTimeout = false
@@ -298,7 +322,7 @@ private class Search(
             val action = pending.removeFirst()
             if (!searched.add(action)) continue
             val next = applyAction(position, action, StoneColor.Black, passes) ?: continue
-            when (val child = canForce(next.first, StoneColor.White, next.second, depth - 1, path + action)) {
+            when (val child = canForce(next.first, StoneColor.White, next.second, depth - 1, path + action, record)) {
                 is Force.TimedOut -> sawTimeout = true
                 is Force.Yes -> {
                     allNo = false
@@ -306,6 +330,7 @@ private class Search(
                         child.proofPly + 1,
                         child.nodes,
                         dilate(child.zone, position, action),
+                        pv = listOf(action) + child.pv,
                     )
                     val current = bestYes
                     val better = current == null ||
@@ -344,6 +369,7 @@ private class Search(
         depth: Int,
         moves: List<Action>,
         path: List<Action>,
+        record: Boolean,
     ): Force {
         var anyUnknown = false
         var sawTimeout = false
@@ -351,22 +377,34 @@ private class Search(
         var totalNodes = 0
         var allYes = true
         val yesZones = ArrayList<Set<Point>>()
+        val yesKids = ArrayList<Pair<Action, Force.Yes>>()
         val pending = ArrayDeque(moves)
         val searched = HashSet<Action>()
         while (pending.isNotEmpty()) {
             val action = pending.removeFirst()
             if (!searched.add(action)) continue
             val next = applyAction(position, action, StoneColor.White, passes) ?: continue
-            when (val child = canForce(next.first, StoneColor.Black, next.second, depth - 1, path + action)) {
+            when (val child = canForce(next.first, StoneColor.Black, next.second, depth - 1, path + action, record)) {
                 is Force.TimedOut -> {
                     sawTimeout = true
                     allYes = false
                 }
-                is Force.No -> return Force.No(child.nodes, dilate(child.zone, position, action))
+                is Force.No -> {
+                    val no = Force.No(
+                        child.nodes,
+                        dilate(child.zone, position, action),
+                        pv = listOf(action) + child.pv,
+                    )
+                    if (record && path.size == 2) {
+                        emitPv(path[0], path[1], formatSearchPath(no.pv, false), true)
+                    }
+                    return no
+                }
                 is Force.Yes -> {
                     totalNodes += child.nodes
                     if (child.proofPly + 1 > worstPly) worstPly = child.proofPly + 1
                     yesZones += child.zone
+                    yesKids += action to child
                     if (isNullMove(action, child.zone)) {
                         pending.clear()
                         pending.addAll(retainMustPlay(moves, child.zone, searched))
@@ -381,14 +419,52 @@ private class Search(
         return when {
             sawTimeout -> Force.TimedOut
             anyUnknown -> Force.Unknown
-            allYes -> Force.Yes(worstPly, totalNodes, dilate(yesZones.flatten().toSet(), position))
+            allYes -> {
+                val pv = if (record && path.size == 2) {
+                    resistPv(position, passes, depth, yesKids)
+                } else {
+                    val worst = yesKids.maxByOrNull { it.second.proofPly }
+                    if (worst == null) emptyList() else listOf(worst.first) + worst.second.pv
+                }
+                if (record && path.size == 2) {
+                    emitPv(path[0], path[1], formatSearchPath(pv, true), true)
+                }
+                Force.Yes(worstPly, totalNodes, dilate(yesZones.flatten().toSet(), position), pv)
+            }
             else -> Force.Unknown
         }
     }
 
+    private suspend fun resistPv(
+        position: Position,
+        passes: Int,
+        depth: Int,
+        yesKids: List<Pair<Action, Force.Yes>>,
+    ): List<Action> {
+        if (yesKids.isEmpty()) return emptyList()
+        val liveAt = firstOwnerMoveToTwoEyes(position, problem.targets)
+        val scored = ArrayList<Pair<ResistScore, List<Action>>>()
+        for ((action, child) in yesKids) {
+            val next = applyAction(position, action, StoneColor.White, passes) ?: continue
+            val winning = countWinningBlackReplies(next.first, next.second, depth, action) ?: continue
+            scored += ResistScore(
+                action = action,
+                winningBlack = winning,
+                proofPly = child.proofPly,
+                nodes = child.nodes,
+                livePoint = action is Action.Move && action.point == liveAt,
+            ) to (listOf(action) + child.pv)
+        }
+        if (scored.isEmpty()) {
+            val (action, child) = yesKids.first()
+            return listOf(action) + child.pv
+        }
+        return scored.minWith { a, b -> resistOrder.compare(a.first, b.first) }.second
+    }
+
     private fun stripZone(result: Force): Force = when (result) {
-        is Force.Yes -> Force.Yes(result.proofPly, result.nodes)
-        is Force.No -> Force.No(result.nodes)
+        is Force.Yes -> Force.Yes(result.proofPly, result.nodes, pv = result.pv)
+        is Force.No -> Force.No(result.nodes, pv = result.pv)
         else -> result
     }
 
@@ -521,15 +597,22 @@ private fun actionRank(action: Action): Int = when (action) {
     is Action.Move -> action.point.file * 20 + action.point.rank
 }
 
-internal fun formatSearchPath(path: List<Action>, result: String): String {
+internal fun plyLabel(action: Action, blackToPlay: Boolean): String {
+    val who = if (blackToPlay) "黑" else "白"
+    return when (action) {
+        Action.Pass -> "${who}停"
+        is Action.Move -> "${who}下 ${action.point.label}"
+    }
+}
+
+internal fun branchWinner(blackForces: Boolean): String = if (blackForces) "黑勝" else "白勝"
+
+internal fun formatSearchPath(path: List<Action>, blackForces: Boolean): String {
     var blackToPlay = false
     val steps = path.map { action ->
-        val who = if (blackToPlay) "黑" else "白"
+        val label = plyLabel(action, blackToPlay)
         blackToPlay = !blackToPlay
-        when (action) {
-            Action.Pass -> "${who}停"
-            is Action.Move -> "${who}下 ${action.point.label}"
-        }
+        label
     }
-    return (steps + "結果 $result").joinToString(" -> ")
+    return (steps + branchWinner(blackForces)).joinToString(" -> ")
 }

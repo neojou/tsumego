@@ -43,6 +43,7 @@ data class PlaySnapshot(
     val canUndo: Boolean,
     val searchPaths: List<String> = emptyList(),
     val searchPathCount: Int = 0,
+    val decisionTree: DecisionTreeView = DecisionTreeView.Empty,
     val pickingReply: Boolean = false,
     val canRedo: Boolean = false,
 )
@@ -58,6 +59,7 @@ private data class CachedReply(
     val result: SolverResult,
     val paths: List<String>,
     val pathCount: Int,
+    val tree: DecisionTreeView,
 )
 
 class Session(
@@ -71,6 +73,7 @@ class Session(
     private val history = ArrayList<Ply>()
     private var searchJob: Job? = null
     private val replyCache = HashMap<String, CachedReply>()
+    private var tree = DecisionTreeProjection()
 
     private val _state = MutableStateFlow(snapshotOf(PlayStatus.InProgress, lastMove = null, lastMoveIsPass = false))
     val state: StateFlow<PlaySnapshot> = _state.asStateFlow()
@@ -159,18 +162,23 @@ class Session(
                 old.copy(
                     searchPaths = cached.paths,
                     searchPathCount = cached.pathCount,
+                    decisionTree = cached.tree,
                     pickingReply = false,
                 )
             }
             applySolverResult(cached.result)
             return
         }
+        tree = DecisionTreeProjection()
         publish(
             PlayStatus.WaitingForReply,
             lastPoint(history.lastOrNull()?.black),
             history.lastOrNull()?.black is Action.Pass,
+            clearPaths = true,
         )
         searchJob = scope.launch {
+            val mine = coroutineContext[Job]
+            fun stillThisSearch(): Boolean = searchJob === mine && mine?.isActive == true
             val result = withContext(searchDispatcher) {
                 solver.solve(
                     SolverInput(
@@ -179,7 +187,9 @@ class Session(
                         consecutivePasses = frozenPasses,
                         blackPlayedAway = blackPlayedAway,
                         budget = UnlimitedBudget,
-                        onPath = { line ->
+                        onPath = onPath@{ line ->
+                            if (!stillThisSearch()) return@onPath
+                            tree.notePath()
                             _state.update { old ->
                                 val paths =
                                     if (old.searchPaths.size >= DISPLAYED_SEARCH_PATHS || line in old.searchPaths) {
@@ -187,18 +197,30 @@ class Session(
                                     } else {
                                         old.searchPaths + line
                                     }
-                                old.copy(searchPaths = paths, searchPathCount = old.searchPathCount + 1)
+                                old.copy(
+                                    searchPaths = paths,
+                                    searchPathCount = tree.pathCount,
+                                    decisionTree = tree.view(),
+                                )
                             }
                         },
-                        onPathsComplete = {
-                            _state.update { it.copy(pickingReply = true) }
+                        onPv = onPv@{ white, black, continuation, replace ->
+                            if (!stillThisSearch()) return@onPv
+                            tree.show(white, black, continuation, replace)
+                            _state.update { old ->
+                                old.copy(decisionTree = tree.view())
+                            }
+                        },
+                        onPathsComplete = onDone@{
+                            if (!stillThisSearch()) return@onDone
+                            _state.update { it.copy(pickingReply = true, decisionTree = tree.view()) }
                         },
                     ),
                 )
             }
             if (result !is SolverResult.Timeout) {
                 val snap = _state.value
-                replyCache[key] = CachedReply(result, snap.searchPaths, snap.searchPathCount)
+                replyCache[key] = CachedReply(result, snap.searchPaths, snap.searchPathCount, snap.decisionTree)
             }
             applySolverResult(result)
         }
@@ -240,6 +262,7 @@ class Session(
         lastMoveIsPass: Boolean,
         clearPaths: Boolean = false,
     ) {
+        if (clearPaths) tree = DecisionTreeProjection()
         _state.update { old ->
             snapshotOf(
                 status,
@@ -247,6 +270,7 @@ class Session(
                 lastMoveIsPass,
                 if (clearPaths) emptyList() else old.searchPaths,
                 searchPathCount = if (clearPaths) 0 else old.searchPathCount,
+                decisionTree = if (clearPaths) DecisionTreeView.Empty else old.decisionTree,
                 pickingReply = if (clearPaths || status != PlayStatus.WaitingForReply) false else old.pickingReply,
             )
         }
@@ -258,6 +282,7 @@ class Session(
         lastMoveIsPass: Boolean,
         searchPaths: List<String> = emptyList(),
         searchPathCount: Int = 0,
+        decisionTree: DecisionTreeView = DecisionTreeView.Empty,
         pickingReply: Boolean = false,
     ) = PlaySnapshot(
         problem = problem,
@@ -273,6 +298,7 @@ class Session(
         canUndo = history.isNotEmpty(),
         searchPaths = searchPaths,
         searchPathCount = searchPathCount,
+        decisionTree = decisionTree,
         pickingReply = pickingReply,
         canRedo = status == PlayStatus.Success || status == PlayStatus.Failure,
     )

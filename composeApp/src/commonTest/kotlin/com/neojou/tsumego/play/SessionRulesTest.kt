@@ -134,7 +134,7 @@ class SessionRulesTest {
 
     @Test
     fun redoHidesSearchUntilTheSamePositionIsPlayedAgain() = runTest {
-        val path = "白下 B3 -> 結果 失敗"
+        val path = "白下 B3 -> 白勝"
         var solves = 0
         val solver = object : Solver {
             override suspend fun solve(input: SolverInput): SolverResult {

@@ -15,15 +15,8 @@ class PlayCopyTest {
     }
 
     @Test
-    fun searchPathsAreNumberedFromOne() {
-        val numbered = numberedSearchPaths(
-            listOf(
-                "白下 B3 -> 黑下 A3 -> 結果 成功",
-                "白停 -> 黑下 B3 -> 結果 成功",
-            ),
-        )
-        assertEquals("1. 白下 B3 -> 黑下 A3 -> 結果 成功", numbered[0])
-        assertEquals("2. 白停 -> 黑下 B3 -> 結果 成功", numbered[1])
+    fun decisionTreeTitleIsDecisionTree() {
+        assertEquals("決策樹", decisionTreeTitle())
     }
 
     @Test
