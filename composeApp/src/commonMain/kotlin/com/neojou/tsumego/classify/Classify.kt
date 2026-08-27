@@ -261,15 +261,95 @@ private fun isSeki(
     bensonBlack: Set<Point>,
     bensonWhite: Set<Point>,
 ): Boolean {
-    if (!bothPassed) return false
     val blackTargets = onBoard.filter { position.stones[it] == StoneColor.Black }.toSet()
     val whiteTargets = onBoard.filter { position.stones[it] == StoneColor.White }.toSet()
-    if (blackTargets.isEmpty() || whiteTargets.isEmpty()) return false
-    if (blackTargets.any { it in bensonBlack }) return false
+    if (bothPassed &&
+        blackTargets.isNotEmpty() &&
+        whiteTargets.isNotEmpty() &&
+        blackTargets.none { it in bensonBlack } &&
+        whiteTargets.none { it in bensonWhite }
+    ) {
+        val blackLibs = libertiesOfTargets(position, blackTargets)
+        val whiteLibs = libertiesOfTargets(position, whiteTargets)
+        if (blackLibs.intersect(whiteLibs).isNotEmpty()) return true
+    }
+    return deadlockSeki(position, whiteTargets, bensonBlack, bensonWhite)
+}
+
+/**
+ * 殺棋目標只有白時：每一串都與鄰近黑共氣、安全詰氣提不掉，且詰完仍能做活。
+ * 兩塊白棋的氣加總成 4 點共氣不是雙活（7K one-more：T18 提 T17 後 S18–S19 仍可被 R19 詰氣）。
+ * 只看「填了提不到」也會把 small_trick 連回後的詰氣當成雙活。
+ */
+private fun deadlockSeki(
+    position: Position,
+    whiteTargets: Set<Point>,
+    bensonBlack: Set<Point>,
+    bensonWhite: Set<Point>,
+): Boolean {
+    if (whiteTargets.isEmpty()) return false
     if (whiteTargets.any { it in bensonWhite }) return false
-    val blackLibs = libertiesOfTargets(position, blackTargets)
+    if (position.simpleKoCaptures(StoneColor.Black).isNotEmpty()) return false
+    if (position.simpleKoCaptures(StoneColor.White).isNotEmpty()) return false
+    if (!ownerCanForceLife(position, whiteTargets)) return false
+    val strings = whiteStrings(position, whiteTargets)
+    if (strings.isEmpty()) return false
+    if (strings.any { attackerCanCapture(position, it, 0) }) return false
     val whiteLibs = libertiesOfTargets(position, whiteTargets)
-    return blackLibs.intersect(whiteLibs).isNotEmpty()
+    val adjBlack = whiteLibs.flatMap { position.neighbors(it) }
+        .filter { position.stones[it] == StoneColor.Black }.toSet()
+    if (adjBlack.isEmpty()) return false
+    if (adjBlack.any { it in bensonBlack }) return false
+    val blackLibs = libertiesOfTargets(position, adjBlack)
+    val shared = whiteLibs.intersect(blackLibs)
+    if (whiteLibs.size != shared.size || shared.size < 2 || shared.size > 4) return false
+    if (shared.any { fillCapturesEither(position, it, whiteTargets, adjBlack) }) return false
+    for (point in shared) {
+        val next = position.play(point, StoneColor.Black) ?: continue
+        if (next.liberties(next.stringAt(point)).size < 2) continue
+        if (!ownerCanForceLife(next, whiteTargets)) return false
+    }
+    return true
+}
+
+private fun whiteStrings(position: Position, whiteTargets: Set<Point>): List<Set<Point>> {
+    val seen = HashSet<Point>()
+    val out = ArrayList<Set<Point>>()
+    for (t in whiteTargets) {
+        if (t !in position.stones || !seen.add(t)) continue
+        val string = position.stringAt(t)
+        seen.addAll(string)
+        out += string
+    }
+    return out
+}
+
+/** 黑可安全詰氣直到提掉這串 → 不是雙活。入氣的填不算安全。 */
+private fun attackerCanCapture(position: Position, stones: Set<Point>, depth: Int): Boolean {
+    if (depth > 6) return false
+    val remaining = stones.filter { it in position.stones }.toSet()
+    if (remaining.isEmpty()) return true
+    val libs = libertiesOfTargets(position, remaining)
+    for (point in libs) {
+        val next = position.play(point, StoneColor.Black) ?: continue
+        if (remaining.any { it !in next.stones }) return true
+        if (next.liberties(next.stringAt(point)).size < 2) continue
+        if (attackerCanCapture(next, remaining, depth + 1)) return true
+    }
+    return false
+}
+
+private fun fillCapturesEither(
+    position: Position,
+    point: Point,
+    whiteTargets: Set<Point>,
+    adjBlack: Set<Point>,
+): Boolean {
+    val asBlack = position.play(point, StoneColor.Black)
+    if (asBlack != null && whiteTargets.any { it in position.stones && it !in asBlack.stones }) return true
+    val asWhite = position.play(point, StoneColor.White)
+    if (asWhite != null && adjBlack.any { it !in asWhite.stones }) return true
+    return false
 }
 
 private fun libertiesOfTargets(position: Position, targets: Set<Point>): Set<Point> {
@@ -369,13 +449,28 @@ private fun classifyKo(
     if (colors == setOf(StoneColor.White)) {
         if (blackWins == BasicLife.Live && whiteWins == BasicLife.Live) return Outcome.UnconditionalLive
         if (onBoard.isEmpty()) return Outcome.UnconditionalDead
-        // 還能往兩眼走時，盤上另有單劫不能把整題凍成劫殺（7K：R19 仍可提）。
-        if (ownerCanForceLife(position, targets)) return null
-        // 做不成活且劫仍在：劫殺，不能落到無條件死（v1 淨殺才過）。
-        return Outcome.KoKill
+        val koPoints = blackKos + whiteKos
+        if (!canCaptureTargetBesidesKo(position, targets, koPoints)) return Outcome.KoKill
+        if (!ownerCanForceLife(position, targets)) return Outcome.KoKill
+        return null
     }
     if (bothPassed && blackWins == BasicLife.Seki && whiteWins == BasicLife.Seki) return Outcome.Seki
     return null
+}
+
+private fun canCaptureTargetBesidesKo(
+    position: Position,
+    targets: Set<Point>,
+    koPoints: Collection<Point>,
+): Boolean {
+    for (color in arrayOf(StoneColor.Black, StoneColor.White)) {
+        for (point in position.playable) {
+            if (point in koPoints) continue
+            val next = position.play(point, color) ?: continue
+            if (targets.any { it in position.stones && it !in next.stones }) return true
+        }
+    }
+    return false
 }
 
 private enum class BasicLife { Live, Dead, Seki, Other }

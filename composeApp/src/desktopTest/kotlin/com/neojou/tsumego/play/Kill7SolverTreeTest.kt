@@ -9,7 +9,6 @@ import com.neojou.tsumego.pt
 import com.neojou.tsumego.solve.AlphaBetaSolver
 import com.neojou.tsumego.solve.SolverInput
 import com.neojou.tsumego.solve.UnlimitedBudget
-import com.neojou.tsumego.testSession
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertIs
@@ -48,16 +47,12 @@ class Kill7SolverTreeTest {
             "T19 is not a 白勝 leaf; R19 still captures\n$dump",
         )
         assertTrue(
-            paths.any { it.startsWith("白下 T17 -> 黑下 T18 -> 白下 T19 -> 黑下 R19") },
-            "after T19 black must still be allowed R19\n$dump",
+            paths.none { it == "白下 T17 -> 黑下 T18 -> 白勝" },
+            "T18 captured T17; S18–S19 still 詰氣, not 雙活／白勝\n$dump",
         )
-        val session = testSession(problem, solver = AlphaBetaSolver())
-        assertTrue(session.tryMove(pt("S17")))
-        session.waitForIdle()
-        val treeLines = session.state.value.decisionTree.lines.map { it.text }
         assertTrue(
-            treeLines.none { it == "白下 T19 -> 白勝" },
-            "決策樹 must not treat T19 as 白勝續線\n${treeLines.joinToString("\n")}\n$dump",
+            paths.any { it.startsWith("白下 T17 -> 黑下 T18") && it.endsWith("黑勝") },
+            "T17–T18 should continue to 淨殺／黑勝 (丁四), not freeze\n$dump",
         )
     }
 }

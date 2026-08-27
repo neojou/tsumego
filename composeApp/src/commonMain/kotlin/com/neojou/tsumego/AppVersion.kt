@@ -19,9 +19,9 @@ object AppVersion {
 
     /**
      * Marketing / product version string (no leading `v`).
-     * Current release: **0.2**
+     * Current release: **0.3** (7K 老鼠偷油)
      */
-    const val NAME: String = "0.2"
+    const val NAME: String = "0.3"
 
     /** User-visible label, e.g. `v0.1`. */
     const val DISPLAY: String = "v$NAME"

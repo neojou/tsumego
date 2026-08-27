@@ -48,4 +48,20 @@ class Kill7BugLoopTest {
         assertTrue(pt("S19") !in captured.stones, "S19 should be captured $dump")
         assertEquals(Outcome.Unsettled, outcome, dump)
     }
+
+    @Test
+    fun afterS17T17T18IsUnsettledNotSeki() {
+        val pos = playSeq("S17", "T17", "T18")
+        val top = pos.stringAt(pt("S18"))
+        val afterR19 = pos.play(pt("R19"), StoneColor.Black)
+        val captured = afterR19?.play(pt("T19"), StoneColor.Black)
+        val dump =
+            "outcome=${classify(pos, problem.targets, false)} " +
+                "T17=${pos.stones[pt("T17")]} T18=${pos.stones[pt("T18")]} S17=${pos.stones[pt("S17")]} " +
+                "s18libs=${pos.liberties(top).sorted()} " +
+                "afterR19T19 s18=${captured?.stones?.get(pt("S18"))} s19=${captured?.stones?.get(pt("S19"))}"
+        assertEquals(null, pos.stones[pt("T17")], "T18 captures T17\n$dump")
+        assertEquals(Outcome.Unsettled, classify(pos, problem.targets, bothPassed = false), dump)
+        assertTrue(pt("S18") !in requireNotNull(captured).stones, "R19 then T19 captures S18–S19\n$dump")
+    }
 }

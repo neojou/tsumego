@@ -106,6 +106,26 @@ class DeadShapeTest {
     }
 
     @Test
+    fun smallTrickConnectThenT16S18IsUnsettledNotSeki() {
+        val problem = smallTrickPlayable()
+        var pos = Position.initial(problem)
+        val plays = listOf(
+            StoneColor.Black to "S19",
+            StoneColor.White to "S17",
+            StoneColor.Black to "T16",
+            StoneColor.White to "S18",
+        )
+        for ((color, label) in plays) {
+            pos = requireNotNull(pos.play(pt(label), color)) { "illegal $color $label" }
+        }
+        assertTrue(ownerCanForceLife(pos, problem.targets), "S15 still kills two-eye potential")
+        assertEquals(Outcome.Unsettled, classify(pos, problem.targets, bothPassed = false))
+        pos = requireNotNull(pos.play(pt("S15"), StoneColor.Black))
+        assertTrue(!ownerCanForceLife(pos, problem.targets))
+        assertEquals(Outcome.UnconditionalDead, classify(pos, problem.targets, bothPassed = false))
+    }
+
+    @Test
     fun smallTrickSealedGroupIsUnconditionalDead() {
         val problem = assertIs<ProblemLoad.Ok>(ProblemLibrary.decode(SMALL_TRICK_JSON)).problem
         var pos = Position.initial(problem)

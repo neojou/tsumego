@@ -50,7 +50,7 @@ class PlayCopyTest {
         assertEquals("關於", aboutTitle())
         assertEquals("詰碁", AppVersion.APP_NAME)
         assertEquals("圍棋死活訓練機", AppVersion.SUMMARY)
-        assertEquals("v0.2", AppVersion.DISPLAY)
+        assertEquals("v0.3", AppVersion.DISPLAY)
     }
 
     @Test
@@ -58,7 +58,7 @@ class PlayCopyTest {
         assertTrue(aboutProductSp() <= 24f, "詰碁 must not be display-size in a dialog")
         assertTrue(aboutProductSp() > aboutSummarySp())
         assertTrue(aboutSummarySp() > aboutVersionSp())
-        assertTrue(aboutVersionSp() >= 12f, "v0.2 must stay readable, not labelSmall")
+        assertTrue(aboutVersionSp() >= 12f, "v0.3 must stay readable, not labelSmall")
         assertTrue(
             aboutProductSp() / aboutSummarySp() <= 1.6f,
             "product ${aboutProductSp()} vs summary ${aboutSummarySp()} jumps like displaySmall/bodyLarge",

@@ -186,6 +186,7 @@ class Session(
                         position = frozenPosition,
                         consecutivePasses = frozenPasses,
                         blackPlayedAway = blackPlayedAway,
+                        lastBlack = lastBlackMove?.point,
                         budget = UnlimitedBudget,
                         onPath = onPath@{ line ->
                             if (!stillThisSearch()) return@onPath

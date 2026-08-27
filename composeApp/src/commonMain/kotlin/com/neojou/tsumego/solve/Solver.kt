@@ -46,6 +46,7 @@ data class SolverInput(
     val onPv: (white: Action, black: Action?, continuation: String, replace: Boolean) -> Unit = { _, _, _, _ -> },
     val onPathsComplete: () -> Unit = {},
     val hintWhite: Point? = null,
+    val lastBlack: Point? = null,
     val blackPlayedAway: Boolean = false,
 )
 
@@ -90,6 +91,7 @@ class AlphaBetaSolver(
             onPath = input.onPath,
             onPv = input.onPv,
             rootHintWhite = liveAt,
+            rootLastBlack = input.lastBlack,
             rootKey = input.position.key,
         )
         var proven: Force? = null
@@ -134,6 +136,7 @@ private class Search(
     private val onPath: (String) -> Unit,
     private val onPv: (Action, Action?, String, Boolean) -> Unit,
     private val rootHintWhite: Point? = null,
+    private val rootLastBlack: Point? = null,
     private val rootKey: String? = null,
 ) {
     private fun moves(position: Position, toPlay: StoneColor): List<Action> =
@@ -142,6 +145,7 @@ private class Search(
             toPlay,
             problem,
             hintWhite = rootHintWhite.takeIf { toPlay == StoneColor.White && position.key == rootKey },
+            lastBlack = rootLastBlack.takeIf { toPlay == StoneColor.White && position.key == rootKey },
         )
 
     private val proven = HashMap<String, Force>()
@@ -496,6 +500,7 @@ internal fun actions(
     problem: Problem,
     hintWhite: Point? = null,
     guess: Point? = null,
+    lastBlack: Point? = null,
 ): List<Action> {
     val targets = problem.targets
     val region = relevantEmptyPoints(position, targets)
@@ -508,15 +513,21 @@ internal fun actions(
         seen.addAll(string)
         libertyFirst.addAll(position.liberties(string))
     }
+    val besideLast = if (lastBlack != null && toPlay == StoneColor.White) {
+        position.neighbors(lastBlack).filter { position.play(it, toPlay) != null }.toSet()
+    } else {
+        emptySet()
+    }
     val saving = if (toPlay == StoneColor.White) immediateRefutations(position, problem, pool) else emptySet()
     val clamps = region - libertyFirst
-    val extra = listOfNotNull(hintWhite, guess).filter { position.play(it, toPlay) != null }
+    val extra = (listOfNotNull(hintWhite, guess) + besideLast).filter { position.play(it, toPlay) != null }
     val legal = (pool + saving + extra).distinct().filter { position.play(it, toPlay) != null }
         .ifEmpty { position.legalMoves(toPlay) }
     val ordered = legal.sortedWith(
         compareByDescending<Point> {
             when {
                 toPlay == StoneColor.White && it == hintWhite -> 6
+                toPlay == StoneColor.White && it in besideLast -> 5
                 toPlay == StoneColor.White && it == guess -> 5
                 it in saving -> 4
                 isCapture(position, it, toPlay) -> 3

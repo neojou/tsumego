@@ -13,7 +13,7 @@
 | 解題入口、AND–OR、最長抵抗、報路徑 | `composeApp/src/commonMain/kotlin/com/neojou/tsumego/solve/Solver.kt` | `AlphaBetaSolver`、`Search.canForce`、`pickResist`／`pickRefute`、`formatSearchPath` |
 | 相關區、空手、必應區、區形 | `…/solve/RelevanceZone.kt` | `terminalRelevanceZone`、`dilate`、`isNullMove`、`retainMustPlay`、`zonePattern` |
 | 蒙地卡羅猜順序 | `…/solve/MonteCarlo.kt` | **有程式，未接入** `AlphaBetaSolver`／`Session` |
-| 終局分類、做活點、劫 | `…/classify/Classify.kt` | `classify`、`classifyKo`、`resolveKos`、`ownerCanForceLife`、`firstOwnerMoveToTwoEyes` |
+| 終局分類、做活點、劫、雙活 | `…/classify/Classify.kt` | `classify`、`isSeki`、`deadlockSeki`、`attackerCanCapture`、`classifyKo`、`ownerCanForceLife`、`firstOwnerMoveToTwoEyes` |
 | 對局：何時搜、路徑串流、應手落地 | `…/play/Session.kt` | `launchSearch`、`onPath`、`replyCache`、`DISPLAYED_SEARCH_PATHS` |
 | 殼：決策樹 | `…/play/PlayCopy.kt`、`…/play/DecisionTree.kt`、`…/Tsumego.kt` | 標題決策樹、三層縮排、不編號 |
 
@@ -66,8 +66,8 @@ canForce(pos, toPlay, passes, depth, path):
   o = classify(pos)
   if 題型過:     emit 搜尋路徑; return Yes(ply=0, zone=terminalZone)
   if 終局 or 雙方已停: emit 搜尋路徑; return No(zone=terminalZone)
-  # 終局含劫殺。v1 殺棋打劫不算過，故 KoKill → No → 決策樹白勝。
-  # 分類必須：目標還能做活時不要因旁劫凍成劫殺（否則 T19 有 R19 可提仍變白勝葉子）。
+  # 終局含劫殺、雙活。v1 殺棋兩者都不是過 → No → 決策樹白勝。見下節。
+  # 分類必須：旁劫不要凍成劫殺；兩串白棋的氣不要加總成假雙活。
   if TT hit: return TT
   if depth == 0: return Unknown
   if Black: r = orMoves(...)   # 任一 Yes 即可；保留最短 proofPly
@@ -90,7 +90,7 @@ andMoves:  # 白
   全 Yes → Yes(worstPly)
 ```
 
-候選手 `actions`：氣區空點（`relevantEmptyPoints`，不是相關區）、根上做活點、立刻讓黑無法過的白棋、提子、夾氣、氣、最後停。`guess` 參數現在沒人傳。
+候選手 `actions`：氣區空點（`relevantEmptyPoints`，不是相關區）、根上做活點、**黑剛下之鄰空**（`SolverInput.lastBlack`；7K 老鼠偷油黑 T15 後的 T16 不在氣區裡）、立刻讓黑無法過的白棋、提子、夾氣、氣、最後停。`guess` 參數現在沒人傳。
 
 路徑：`formatSearchPath` 結尾是黑勝／白勝。含停的路徑不報。Session 串流 `onPath`（計走完條數）與 `onPv`（決策樹葉子）；證明完 `onPathsComplete` 才 `pickingReply`。
 
@@ -197,10 +197,11 @@ classifyKo(pos, targets):
     黑贏劫能活、白贏劫不能活 → 劫活
     兩邊假設都能活 → 無條件活
   目標只剩白:
-    兩邊假設都能活 → 無條件活
+    兩邊假設都能 Benson 活 → 無條件活
     目標已提淨 → 無條件死
-    目標色仍能往兩眼走 (ownerCanForceLife) → null（未定，繼續搜）
-    否則 → 劫殺                         # 做不成活 + 單劫仍在；不能落到無條件死
+    單劫提、除劫點外提不到目標 → 劫殺   # 本題劫
+    做不成兩眼且劫仍在 → 劫殺           # 8K
+    否則 null                           # 旁劫（R19）
   雙方已停且两次假設都是雙活 → 雙活
   其它 → null
 ```
@@ -212,6 +213,116 @@ classifyKo(pos, targets):
 殺棋目標是白。舊規則「盤上有單劫且白目標還在 → 一律劫殺」會把 **旁劫** 當成整題終局：7K 黑 S17 後白 T19，T17/T18 是單劫，但 S18–S19–T19 只剩氣 R19，黑提三子與那劫無關。分類成劫殺 → `Force.No` → 樹上 `白下 T17 -> 黑下 T18 -> 白下 T19 -> 白勝`。
 
 現況：白目標 **還能做活** 則 `classifyKo` 回 `null`，局面未定，R19 會被展開。白目標 **做不成兩眼** 且單劫仍在才劫殺（8K 提劫那條：淨殺才過，打劫失敗）。測：`Kill7BugLoopTest`、`DeadShapeTest.kill8KoTakeIsKoKillNotUnconditionalDead`。
+
+---
+
+## 雙活：怎麼判定、決策樹怎麼當葉子
+
+決策樹**不自己判斷雙活**。葉子只看 `classify`：`Outcome.Seki` 對殺棋不是過 → `Force.No` → 樹寫 **白勝** → 對局 **失敗**。若那枝其實還能淨殺，要改的是分類（ADR-0010、0014），不是 AND–OR 或顯示收束。
+
+`classify` 順序（ADR-0014）：提淨 → Benson 無條件活 → **雙活** → 劫 → 雙方已停則剩餘當死 → 做不成兩眼則無條件死 → 未定。雙活在「做不成活則死」之前，所以假雙活會擋住丁四／詰氣。
+
+詞：CONTEXT「雙活」＝雙方靠共氣共存，不是無條件活。ADR-0010：不是把「未定」或「雙方已停」直接當雙活。
+
+### 兩條路徑
+
+`isSeki` 在 `Classify.kt`。v1 殺棋目標只有白，黑鄰串不在 `targets`，所以要兩條：
+
+```
+isSeki(pos, targets, bothPassed):
+  # 路徑 A — ADR-0010：targets 裡有黑也有白（雙活題／雙方已停）
+  if bothPassed and 黑目標、白目標都非空 and 都非 Benson:
+    if 黑氣 ∩ 白氣 非空: return true
+
+  # 路徑 B — 殺棋：不等停、不要求黑在 targets
+  return deadlockSeki(pos, 白目標)
+```
+
+路徑 A 殺棋 v1 **走不到**（沒有黑目標）。若不做路徑 B：未停 → 未定繼續下；雙方已停 → 「剩餘當死」→ 無條件死 → 假 **黑勝**。測：`SessionOutcomeTest.killFailsOnSekiShape`（路徑 A，targets 含黑白）。
+
+### 路徑 B：`deadlockSeki`（現況草圖）
+
+靜態條件，不搜白應手。黑詰氣是「攻擊方連續填自己不入氣的氣」。
+
+```
+deadlockSeki(pos, whiteTargets):
+  if 白目標空 or 任一 Benson: return false
+  if 任一方有單劫提: return false          # 單劫交給 classifyKo
+  if !ownerCanForceLife(pos, whiteTargets): return false   # 做不成兩眼 → 無條件死，不是雙活
+  strings = 白目標在盤上的棋串（按串，不把氣加總）
+  if 任一串 attackerCanCapture: return false               # 還能安全詰到提掉
+
+  whiteLibs = 所有白目標串的氣的聯集
+  adjBlack  = 那些氣旁邊的黑子
+  if adjBlack 空 or 任一 Benson: return false
+  shared = whiteLibs ∩ adjBlack的氣
+  if whiteLibs 不全是共氣: return false
+  if shared 點數不在 2..4: return false
+  if 任一共氣點 fillCapturesEither: return false           # 填下去立刻提掉對方
+  for p in shared:
+    黑下 p（合法且下完自己不入氣）後
+    if !ownerCanForceLife: return false                    # 詰一口氣就做不成兩眼
+  return true                                              # 靜態雙活
+```
+
+```
+attackerCanCapture(pos, stones, depth≤6):
+  remaining = 這串還在盤上的子
+  if remaining 空: return true          # 已被提
+  for p in remaining 的氣:
+    next = 黑下 p
+    if 這串被提掉: return true
+    if 黑這手後自己 < 2 氣: skip        # 入氣／倒撲不當安全詰氣
+    if attackerCanCapture(next, remaining): return true
+  return false                          # 安全詰氣提不掉
+```
+
+```
+fillCapturesEither(p):
+  黑下 p 提掉任一白目標 → true
+  白下 p 提掉任一鄰近黑 → true
+```
+
+`ownerCanForceLife`：目標色連下能否 Benson（眼位空點 > 8 直接當還能活）。假眼／單眼封死走這條，不是雙活。
+
+### 對照題
+
+| 局面 | 為什麼 | 終局 |
+|---|---|---|
+| 老鼠偷油 T18–S17–T16–T15–T17 | 白**一串**，氣 Q15/R19/S16/T19 全共氣。Q15／R19 安全詰完仍剩 S16／T19 入氣，`canLive=true` | 雙活 → 殺棋白勝。測 `Kill7MouseOilResistTest.t18S17T16T15T17IsSekiKillFailure` |
+| one-more S17–T17–T18 | T18 **提掉 T17**，S17 是黑（可連 T16／T18 成丁四）。白裂成 S18–S19 與 T15 下邊**兩串**。S18–S19 氣只有 R19／T19，R19 安全再 T19 提掉 | **未定**，不是雙活。樹不可在 `白下 T17 -> 黑下 T18 -> 白勝` 停。測 `Kill7BugLoopTest.afterS17T17T18IsUnsettledNotSeki`、`Kill7SolverTreeTest` |
+| small_trick S19–S17–T16–S18 | 4 共氣、填了當下提不到，但黑 S15 後 `canLive=false` | 詰氣／無條件死，不是雙活。測 `DeadShapeTest.smallTrickConnectThenT16S18IsUnsettledNotSeki` |
+
+舊錯：把所有白目標的氣**加總**成一組 2–4 共氣。one-more T18 後 Q15+R19+S16+T19 長得像老鼠偷油，其實是兩串。
+
+### 和決策樹的接縫
+
+殺棋：`Seki` → 不能強迫無條件死 → 該枝 **白勝**，對局失敗，不必再輪黑（與劫殺相同）。假雙活的症狀就是樹上過早出現 `… -> 白勝`，對局被宣判失敗。
+
+還沒做／刻意不做：
+
+- 沒有丁四／盤角曲四形狀表；能殺就靠「按串詰氣」或「詰完做不成兩眼」落到未定／無條件死，再交給 AND–OR
+- `attackerCanCapture` 不模擬白應手（攻擊方連填）
+- 入氣的填不當安全詰氣（倒撲／棄子要靠後續搜尋，不在分類裡演）
+- 路徑 A 仍要雙方已停且 targets 含黑白；殺棋只靠路徑 B
+
+---
+
+## v1 淨殺：打劫／雙活即白勝，對局停
+
+契約已在 ADR-0002／0003／0009／0024 與 CONTEXT「失敗」。殺棋只認無條件死；劫殺、劫活、雙活、無條件活都是 **黑不能強迫過** → 搜尋 `Force.No` → 決策樹 **白勝** → 對局 **失敗**。Session `applyBlack`：`outcome != Unsettled` 就宣判，不再 `launchSearch`，不用再輪黑。`applyWhite` 的 `Refute` 同樣失敗。
+
+葉子文案仍是黑勝／白勝（ADR-0026）。打劫是終局名，不是第三種樹葉；路徑寫 `… -> 白勝` 即「這枝淨殺失敗」。
+
+**缺口（老鼠偷油 T15–T16–T17–S17–S16）：** 單劫禁立即回提（ADR-0004）讓搜尋在黑提劫後把白回提當非法，當成黑已贏劫繼續淨殺，樹上出現 `… -> 黑勝`，違反 ADR-0002「不當成對局下完」。要先分類：有單劫提、且除劫點外沒有提掉目標的著手 → 劫殺（本題劫）；旁劫仍可用非劫提（R19）→ 未定。`ownerCanForceLife(目前局面)` 不能當唯一門檻，因為做活搜尋會把回提當白自己的填子。測：`Kill7MouseOilResistTest`。
+
+```
+白目標 classifyKo:
+  两次假設都能 Benson 活 → 無條件活
+  有單劫提、且除劫點外沒有提掉目標的著手 → 劫殺   # 本題劫（老鼠偷油 S17／S16）
+  做不成兩眼且劫仍在 → 劫殺                         # 8K 提劫
+  否則 null（旁劫：R19 仍可提三子）
+```
 
 ---
 
@@ -299,7 +410,7 @@ on enter: if proven[ttKey] return it
 
 ## 改搜尋時從哪裡下手
 
-1. 證明對不對：`canForce`／分類／劫殺／相關區；測 `SessionSolverTest`、`SmallTrickSolverTest`、`Kill8BugLoopTest`、`Kill7BugLoopTest`、`Kill7SolverTreeTest`
+1. 證明對不對：`canForce`／分類／劫殺／雙活／相關區；測 `SessionSolverTest`、`SmallTrickSolverTest`、`Kill8BugLoopTest`、`Kill7BugLoopTest`、`Kill7SolverTreeTest`
 2. 應手穩不穩：`resistOrder`、`pickRefute`；測最長抵抗與做活點
 3. 有路徑沒應手：先量 `Kill7ReplyLagTest` 的 firstPath／complete／done，再考慮證明輪 `yesKids` 交給 `pickResist`。顯示收束不會讓搜尋變快
 4. 要更快：接上 `zonePattern`、加深 TT、或新 `Solver`（df-pn 等）
