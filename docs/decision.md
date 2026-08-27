@@ -96,6 +96,70 @@ andMoves:  # 白
 
 ---
 
+## 路徑已出、應手未下（現況）
+
+這不是顯示漏掉應手。ADR-0019：證明之前不下子。決策樹在**證明途中**就長，應手在**證明之後還要再選一次**才落地。殼「輪白, 思考時間」整段都在走；`pickingReply` 之後多一行「從路徑中思考最強應手...」。
+
+```
+黑落下 → Session.launchSearch（UnlimitedBudget）
+  canForce 迭代加深 1..48
+    走到終局 → onPath / onPv          # 決策樹開始有葉子；白子還不在盤上
+    白根 AND 要 Yes：必須把所有白棋都證完（任一 No 才早退成反證）
+  第一次 Yes 或 No
+    onPathsComplete → pickingReply=true
+    Yes → pickResist(proveDepth)      # 再掃根上每一手白棋
+    No  → pickRefute(proveDepth)
+  Resist / Refute 才 applyWhite
+```
+
+同一份 `Search`（TT 還在）。`pickResist` 對根上每一手白棋的「能否強迫」走 TT（證明輪已寫入，通常是微秒）；`countWinningBlackReplies` 只數 **已證明的黑勝手**：TT 命中直接算，未證明的黑手最多再搜 `RANK_WIN_PLY`（3）ply。不可用滿 `proveDepth-1` 重證——7K 老鼠偷油黑 T16 後證明 7s、1968 條路徑就 `pickingReply`，接著對 9 手白棋在深度 7 數黑手，單枝 Q15 後 T17 要 20s，UnlimitedBudget 會再想幾分鐘、路徑數不再增加。
+
+```
+pickResist(d):
+  for white in moves(根, White):          # 做活點、立刻反證、提子、夾氣、氣、Pass
+    for k in 1..d:
+      child = canForce(白下完, Black, k, record=true)
+      Yes → 記住; break
+      No  → 這手丟掉（不是應手候選）
+    if Yes: winningBlack = countWinningBlackReplies(白下完, d)
+  在仍 Yes 的白棋裡取 resistOrder 最小 → Resist
+
+countWinningBlackReplies:
+  對 actions(黑) 每一手：
+    TT 已有 Yes／No → 用它
+    否則 canForce(黑下完, White, min(d-1, 3), record=false)
+  數 Yes 的個數
+```
+
+`resistPv`（顯示用最長抵抗續線）**只在 `path.size == 2`**（已有白1、黑1，輪到下一手白）對該節點的 `yesKids` 算 `countWinningBlackReplies`。根（`path.size == 0`）的 PV 只用「最壞 proofPly」，不當最長抵抗，所以根應手一定走 `pickResist` 第二輪。
+
+測：`Kill7ReplyLagTest.afterS17PathsAppearBeforeReply`、`mouseOilAfterT16MustLandReplyAfterPicking`。7K 黑 S17 後桌面一輪：第一條路徑 37ms、證明完 715ms、應手落地 1.64s。老鼠偷油黑 T16：證明完 7.3s、1968 條路徑後必須落下應手，不能在 `pickingReply` 再滿深度數黑手。
+
+### 7K 為什麼特別容易卡在「有樹、沒應手」
+
+1. 白根要證明黑仍能強迫 → AND 窮舉所有白棋。每搜完一手，終局路徑就先噴出來；剩下的白棋還沒證完，不能落下應手。
+2. 劫分類修正後（見下節）：旁劫不再當葉子，T17/T18/T19 那條繼續展開，證明變深、路徑變多。
+3. 有單劫的未定局面，`classify` 每次都可能跑 `ownerCanForceLife`（目標色連下到兩眼，上限 4000 節點）。
+4. 證明完 `pickResist` 若用滿深度重數黑手，單枝可到 20s（T16 後白 Q15、黑 T17）；現況未證明的黑手只搜 3 ply，TT 已有的 Yes／No 直接算。
+5. Session 不設時限。算不完就一直「思考時間」往上加，悔棋才中止。
+
+這是搜尋政策＋最長抵抗的成本，不是決策樹投影的 bug。顯示收束不會讓這段變快。
+
+### 對照「還沒做／少做」的缺口
+
+| 缺口 | 現況 | 對 7K 的影響 |
+|---|---|---|
+| 根 Yes 的 `yesKids` 丟棄 | 強迫結果走 TT；數黑手未證明只 3 ply | T16 後不再因滿深度數黑手卡幾分鐘 |
+| 最長抵抗只在 `path.size==2` 算 | 根 PV 用最壞 ply | 根應手不能從證明那輪直接取 |
+| 證明中途就下目前最好的白棋 | ADR-0019 禁止 | 有路徑 ≠ 有應手 |
+| 時限 | ADR-0016 已廢，改 ADR-0019 | Wasm 可想好幾分鐘 |
+| 區形模式表 | 有型別、搜尋沒用 | 同形重證 |
+| df-pn／PN | 沒有（ADR-0015） | 不會把節點集中在未證明的白棋 |
+
+再縮「有樹沒子」：讓 `pickResist` 直接吃證明輪 `yesKids` 的 `winningBlack`，不必再掃根上白棋。不要為了快而改最長抵抗的鍵。
+
+---
+
 ## 劫殺：怎麼判定、決策樹怎麼當葉子
 
 決策樹**不自己判斷劫殺**。葉子只看 `classify` 回的終局，再對題型表（ADR-0003）：
@@ -235,6 +299,7 @@ on enter: if proven[ttKey] return it
 
 ## 改搜尋時從哪裡下手
 
-1. 證明對不對：`canForce`／分類／劫殺／相關區；測 `SessionSolverTest`、`SmallTrickSolverTest`、`Kill8BugLoopTest`、`Kill7BugLoopTest`
+1. 證明對不對：`canForce`／分類／劫殺／相關區；測 `SessionSolverTest`、`SmallTrickSolverTest`、`Kill8BugLoopTest`、`Kill7BugLoopTest`、`Kill7SolverTreeTest`
 2. 應手穩不穩：`resistOrder`、`pickRefute`；測最長抵抗與做活點
-3. 要更快：先量 `onPath` 條數與節點，再考慮接上 `zonePattern`、加深 TT、或新 `Solver`（df-pn 等）。顯示收束不會讓搜尋變快
+3. 有路徑沒應手：先量 `Kill7ReplyLagTest` 的 firstPath／complete／done，再考慮證明輪 `yesKids` 交給 `pickResist`。顯示收束不會讓搜尋變快
+4. 要更快：接上 `zonePattern`、加深 TT、或新 `Solver`（df-pn 等）

@@ -191,10 +191,23 @@ private class Search(
         white: Action,
     ): Int? {
         var win = 0
+        val rankDepth = minOf(proveDepth - 1, RANK_WIN_PLY).coerceAtLeast(0)
         for (black in moves(position, StoneColor.Black)) {
             if (budget.expired()) return null
             val afterBlack = applyAction(position, black, StoneColor.Black, passes) ?: continue
-            when (canForce(afterBlack.first, StoneColor.White, afterBlack.second, proveDepth - 1, listOf(white, black), record = false)) {
+            val key = ttKey(afterBlack.first, StoneColor.White, afterBlack.second)
+            val child = when (val hit = proven[key]) {
+                is Force.Yes, is Force.No -> hit
+                else -> canForce(
+                    afterBlack.first,
+                    StoneColor.White,
+                    afterBlack.second,
+                    rankDepth,
+                    listOf(white, black),
+                    record = false,
+                )
+            }
+            when (child) {
                 is Force.Yes -> win++
                 is Force.TimedOut -> return null
                 else -> Unit
@@ -572,6 +585,9 @@ internal fun applyAction(
         next to 0
     }
 }
+
+/** Unproven black replies are not re-expanded at full proveDepth (7K T16: 20s/branch). */
+private const val RANK_WIN_PLY = 3
 
 private data class ResistScore(
     val action: Action,
