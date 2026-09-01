@@ -10,6 +10,7 @@ import com.neojou.tsumego.classify.classify
 import com.neojou.tsumego.classify.firstOwnerMoveToTwoEyes
 import com.neojou.tsumego.classify.minOwnerMovesToTwoEyes
 import com.neojou.tsumego.classify.ownerCanForceLife
+import com.neojou.tsumego.classify.whiteKoThrowIns
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.TimeSource
 
@@ -77,7 +78,15 @@ class AlphaBetaSolver(
         val liveAt = firstOwnerMoveToTwoEyes(input.position, input.problem.targets)
         if (liveAt != null && input.blackPlayedAway) {
             val next = input.position.play(liveAt, StoneColor.White)
-            if (next != null && ownerCanForceLife(next, input.problem.targets)) {
+            // 脫先反駁只在：這手後已 Benson，或黑回來一手殺不掉且白仍能連填兩眼。
+            // 不可用「黑永遠脫先」：7K P18 後 T18 還要再填，黑 T15 立刻淨殺。
+            if (next != null &&
+                ownerCanForceLife(next, input.problem.targets) &&
+                (
+                    minOwnerMovesToTwoEyes(next, input.problem.targets) == 0 ||
+                        !attackerKillsInOneMove(next, input.problem)
+                    )
+            ) {
                 val action = Action.Move(liveAt)
                 input.onPath(formatSearchPath(listOf(action), blackForces = false))
                 input.onPv(action, null, branchWinner(false), false)
@@ -180,10 +189,21 @@ private class Search(
                     proofPly = found.proofPly,
                     nodes = found.nodes,
                     livePoint = action is Action.Move && action.point == liveAt,
+                    besideLast = !input.blackPlayedAway &&
+                        action is Action.Move &&
+                        input.lastBlack != null &&
+                        input.lastBlack in input.position.neighbors(action.point),
+                    awayLive = input.blackPlayedAway &&
+                        action is Action.Move &&
+                        action.point == liveAt,
                 )
             }
         }
         if (scored.isEmpty()) return SolverResult.Resist(Action.Pass)
+        if (input.blackPlayedAway && liveAt != null) {
+            val live = scored.find { it.action is Action.Move && it.action.point == liveAt }
+            if (live != null) return SolverResult.Resist(live.action)
+        }
         val best = scored.minWith(resistOrder)
         return SolverResult.Resist(best.action)
     }
@@ -518,9 +538,19 @@ internal fun actions(
     } else {
         emptySet()
     }
-    val saving = if (toPlay == StoneColor.White) immediateRefutations(position, problem, pool) else emptySet()
+    val koApproach = if (toPlay == StoneColor.White) {
+        whiteKoThrowIns(position, targets)
+    } else {
+        emptySet()
+    }
+    val saving = if (toPlay == StoneColor.White) {
+        immediateRefutations(position, problem, pool + koApproach)
+    } else {
+        emptySet()
+    }
     val clamps = region - libertyFirst
-    val extra = (listOfNotNull(hintWhite, guess) + besideLast).filter { position.play(it, toPlay) != null }
+    val extra = (listOfNotNull(hintWhite, guess) + besideLast + koApproach)
+        .filter { position.play(it, toPlay) != null }
     val legal = (pool + saving + extra).distinct().filter { position.play(it, toPlay) != null }
         .ifEmpty { position.legalMoves(toPlay) }
     val ordered = legal.sortedWith(
@@ -530,6 +560,7 @@ internal fun actions(
                 toPlay == StoneColor.White && it in besideLast -> 5
                 toPlay == StoneColor.White && it == guess -> 5
                 it in saving -> 4
+                toPlay == StoneColor.White && it in koApproach -> 4
                 isCapture(position, it, toPlay) -> 3
                 it in clamps -> 2
                 it in libertyFirst -> 1
@@ -584,6 +615,20 @@ internal fun relevantEmptyPoints(position: Position, targets: Set<Point>): Set<P
     return relevant
 }
 
+/** 黑一手就過題（7K 白 T18 後黑 T15 淨殺）→ 脫先不能直接反駁. */
+private fun attackerKillsInOneMove(position: Position, problem: Problem): Boolean {
+    val points = HashSet(relevantEmptyPoints(position, problem.targets))
+    for (t in problem.targets) {
+        if (t !in position.stones) continue
+        points.addAll(position.liberties(position.stringAt(t)))
+    }
+    for (point in points) {
+        val next = position.play(point, StoneColor.Black) ?: continue
+        if (problem.goal.isSuccess(classify(next, problem.targets, bothPassed = false))) return true
+    }
+    return false
+}
+
 internal fun applyAction(
     position: Position,
     action: Action,
@@ -606,16 +651,20 @@ private data class ResistScore(
     val proofPly: Int,
     val nodes: Int,
     val livePoint: Boolean,
+    val besideLast: Boolean = false,
+    val awayLive: Boolean = false,
 )
 
 /**
- * Narrower kill first (fewer proven winning black replies), then longer ply,
- * then more nodes, then 做活點, then smaller coordinates.
+ * Narrower kill first; 脫先時做活點優於 ply（S15 後 T16 不是 T17）；
+ * 否則 ply、鄰空、節點少、做活點、座標。
  */
 private val resistOrder = compareBy<ResistScore> { it.winningBlack }
     .thenBy { if (it.action is Action.Pass) 1 else 0 }
+    .thenBy { if (it.awayLive) 0 else 1 }
     .thenByDescending { it.proofPly }
-    .thenByDescending { it.nodes }
+    .thenBy { if (it.besideLast) 0 else 1 }
+    .thenBy { it.nodes }
     .thenBy { if (it.livePoint) 0 else 1 }
     .thenBy { actionRank(it.action) }
 

@@ -73,6 +73,32 @@ class DeadShapeTest {
     }
 
     @Test
+    fun t16IsLivingMoveAfterS19() {
+        val problem = smallTrickPlayable()
+        val pos = requireNotNull(Position.initial(problem).play(pt("S19"), StoneColor.Black))
+        assertEquals(pt("T16"), firstOwnerMoveToTwoEyes(pos, problem.targets))
+    }
+
+    @Test
+    fun afterS19R19S15T16S17IsKillSuccess() {
+        val problem = smallTrickPlayable()
+        var pos = Position.initial(problem)
+        val plays = listOf(
+            StoneColor.Black to "S19",
+            StoneColor.White to "R19",
+            StoneColor.Black to "S15",
+            StoneColor.White to "T16",
+            StoneColor.Black to "S17",
+        )
+        for ((color, label) in plays) {
+            pos = requireNotNull(pos.play(pt(label), color)) { "illegal $color $label" }
+        }
+        val outcome = classify(pos, problem.targets, bothPassed = false)
+        assertEquals(Outcome.UnconditionalDead, outcome)
+        assertTrue(problem.goal.isSuccess(outcome))
+    }
+
+    @Test
     fun t16MakesTwoEyesAfterS19R19S15() {
         val problem = smallTrickPlayable()
         var pos = Position.initial(problem)

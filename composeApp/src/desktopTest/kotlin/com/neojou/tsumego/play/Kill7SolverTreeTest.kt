@@ -37,6 +37,7 @@ class Kill7SolverTreeTest {
                 position = start,
                 consecutivePasses = 0,
                 budget = UnlimitedBudget,
+                lastBlack = pt("S17"),
                 onPath = { paths += it },
                 onPv = { _, _, continuation, _ -> pvs += continuation },
             ),

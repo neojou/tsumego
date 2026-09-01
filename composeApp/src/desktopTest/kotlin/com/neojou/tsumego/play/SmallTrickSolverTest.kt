@@ -42,9 +42,10 @@ class SmallTrickSolverTest {
         assertTrue(session.tryMove(pt("S15")))
         session.waitForIdle()
         val snap = session.state.value
-        assertEquals(PlayStatus.Failure, snap.status)
-        assertEquals(pt("T16"), snap.lastMove, "白應做活於 T16, got ${snap.lastMove}")
-        assertEquals(StoneColor.White, snap.stones[pt("T16")])
+        val dump = "status=${snap.status} last=${snap.lastMove} tree=${snap.decisionTree.lines.map { it.text }}"
+        assertEquals(PlayStatus.InProgress, snap.status, dump)
+        assertEquals(pt("T16"), snap.lastMove, "白應 T16（做活還差 S17，黑能回來淨殺，不是立刻失敗）\n$dump")
+        assertEquals(StoneColor.White, snap.stones[pt("T16")], dump)
     }
 
     @Test

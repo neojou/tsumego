@@ -8,8 +8,8 @@ import com.neojou.tsumego.board.Position
 import com.neojou.tsumego.board.StoneColor
 
 /**
- * ADR-0014 order: captured → Benson → 雙活 → 贏劫／輸劫 → 雙方已停則剩餘當死 →
- * 目標色連續落子仍到不了 Benson → 未定.
+ * ADR-0014 order: captured → Benson → 雙活 → 假眼死形（白一手能做成劫殺則未定）→
+ * 贏劫／輸劫 → 雙方已停則剩餘當死 → 做不成兩眼（同樣先看即將成劫）→ 未定.
  */
 internal fun classify(position: Position, targets: Set<Point>, bothPassed: Boolean): Outcome {
     if (targets.isEmpty()) return Outcome.Unsettled
@@ -25,6 +25,10 @@ internal fun classify(position: Position, targets: Set<Point>, bothPassed: Boole
     if (isSeki(position, targets, onBoard, bothPassed, bensonBlack, bensonWhite)) {
         return Outcome.Seki
     }
+    val whiteTargets = whiteTargetsOf(onBoard, position)
+    if (isFalseEyeDead(position, whiteTargets, bensonBlack, bensonWhite)) {
+        if (!whiteCanMakeKoKill(position, targets, onBoard)) return Outcome.UnconditionalDead
+    }
 
     val ko = if (position.hasKoCandidate()) classifyKo(position, targets, onBoard, bothPassed) else null
     if (ko != null) return ko
@@ -33,6 +37,7 @@ internal fun classify(position: Position, targets: Set<Point>, bothPassed: Boole
         return Outcome.UnconditionalDead
     }
     if (!ownerCanForceLife(position, targets)) {
+        if (whiteCanMakeKoKill(position, targets, onBoard)) return Outcome.Unsettled
         return Outcome.UnconditionalDead
     }
     return Outcome.Unsettled
@@ -73,7 +78,13 @@ internal fun isAwayFromTargets(position: Position, point: Point, targets: Set<Po
 internal fun ownerCanForceLife(position: Position, targets: Set<Point>): Boolean {
     val onBoard = targets.filter { it in position.stones }.toSet()
     if (onBoard.isEmpty()) return false
-    if (libertyFlood(position, onBoard).size > MAX_OWNER_FILL_SPACE) return true
+    val tight = onBoard.size < targets.size
+    if (tight) {
+        val (region, _) = eyeSpaceRaw(position, onBoard)
+        if (region.size > MAX_OWNER_FILL_SPACE) return true
+    } else if (libertyFlood(position, onBoard).size > MAX_OWNER_FILL_SPACE) {
+        return true
+    }
     return minOwnerMovesToTwoEyes(position, targets) != null
 }
 
@@ -146,9 +157,39 @@ internal fun trueEyeCount(position: Position, color: StoneColor): Int {
     return n
 }
 
+/** 做活不可靠提掉攻擊方整串；單顆眼內廢子仍可提。 */
+private fun capturesMultipleOpponent(before: Position, after: Position, color: StoneColor): Boolean {
+    val opp = color.opposite
+    var n = 0
+    for ((point, stone) in before.stones) {
+        if (stone == opp && point !in after.stones) {
+            n++
+            if (n >= 2) return true
+        }
+    }
+    return false
+}
+
+/**
+ * 對殺：提掉開局時還有兩氣以上的攻擊子（8K 彎三點眼 T18）。
+ * 眼內廢子開局已是一氣，仍可提。
+ */
+private fun capturesSpareLibAttacker(root: Position, after: Position, color: StoneColor): Boolean {
+    val opp = color.opposite
+    val seen = HashSet<Point>()
+    for ((point, stone) in root.stones) {
+        if (stone != opp || point in after.stones || !seen.add(point)) continue
+        val string = root.stringAt(point)
+        seen.addAll(string)
+        if (string.any { it !in after.stones } && root.liberties(string).size > 1) return true
+    }
+    return false
+}
+
 /**
  * Fewest consecutive owner stones to Benson 無條件活, ignoring the attacker.
  * Null if the local eye space cannot make two eyes.
+ * Capturing the attacker is 對殺, not 做活.
  */
 internal fun minOwnerMovesToTwoEyes(position: Position, targets: Set<Point>): Int? {
     val onBoard = targets.filter { it in position.stones }.toSet()
@@ -173,6 +214,8 @@ internal fun minOwnerMovesToTwoEyes(position: Position, targets: Set<Point>): In
         if (depth >= MAX_OWNER_FILL_SPACE) continue
         for (point in candidates.sorted()) {
             val next = pos.play(point, color) ?: continue
+            if (capturesMultipleOpponent(pos, next, color)) continue
+            if (capturesSpareLibAttacker(position, next, color)) continue
             if (seen.add(next.key)) queue.add(Node(next, depth + 1))
         }
     }
@@ -180,9 +223,8 @@ internal fun minOwnerMovesToTwoEyes(position: Position, targets: Set<Point>): In
 }
 
 /**
- * Empty points next to the target strings, plus one more step of empty.
- * Full-board floods from a liberty treat outside dame as eye space and
- * the size cap then pretends the group can live.
+ * Unbounded empty flood from liberties. Outside dame inflate the count so
+ * [ownerCanForceLife] must not use this after some targets are already captured.
  */
 private fun libertyFlood(position: Position, onBoard: Set<Point>): Set<Point> {
     val start = LinkedHashSet<Point>()
@@ -276,40 +318,76 @@ private fun isSeki(
     return deadlockSeki(position, whiteTargets, bensonBlack, bensonWhite)
 }
 
+private fun whiteTargetsOf(onBoard: Set<Point>, position: Position): Set<Point> =
+    onBoard.filter { position.stones[it] == StoneColor.White }.toSet()
+
 /**
- * 殺棋目標只有白時：每一串都與鄰近黑共氣、安全詰氣提不掉，且詰完仍能做活。
+ * 殺棋目標只有白時：每一串都與鄰近黑共氣、安全詰氣提不掉。
  * 兩塊白棋的氣加總成 4 點共氣不是雙活（7K one-more：T18 提 T17 後 S18–S19 仍可被 R19 詰氣）。
  * 只看「填了提不到」也會把 small_trick 連回後的詰氣當成雙活。
+ * 假眼剩 1 口真氣（13K 黑 S19 點眼）不是雙活，見 [isFalseEyeDead]。
+ * 真氣≥2 但做不成兩眼也不是雙活（8K 白 S19 黑 T18；彎三點眼 T18 不是做活）。
  */
 private fun deadlockSeki(
     position: Position,
     whiteTargets: Set<Point>,
     bensonBlack: Set<Point>,
     bensonWhite: Set<Point>,
-): Boolean {
-    if (whiteTargets.isEmpty()) return false
-    if (whiteTargets.any { it in bensonWhite }) return false
-    if (position.simpleKoCaptures(StoneColor.Black).isNotEmpty()) return false
-    if (position.simpleKoCaptures(StoneColor.White).isNotEmpty()) return false
-    if (!ownerCanForceLife(position, whiteTargets)) return false
+): Boolean = sharedLibertyKind(position, whiteTargets, bensonBlack, bensonWhite) == SharedLibertyKind.Seki
+
+/**
+ * 點眼死形：2–4 口全共氣，但真氣（非假眼）≤ 1。不是雙活，也不是靠 ownerCanForceLife：
+ * 氣洪水會把牆外氣當成還能活（13K P19→O19），放進做活判定會改 winningBlack／最長抵抗。
+ */
+private fun isFalseEyeDead(
+    position: Position,
+    whiteTargets: Set<Point>,
+    bensonBlack: Set<Point>,
+    bensonWhite: Set<Point>,
+): Boolean = sharedLibertyKind(position, whiteTargets, bensonBlack, bensonWhite) == SharedLibertyKind.FalseEyeDead
+
+private enum class SharedLibertyKind { Seki, FalseEyeDead, Neither }
+
+private fun sharedLibertyKind(
+    position: Position,
+    whiteTargets: Set<Point>,
+    bensonBlack: Set<Point>,
+    bensonWhite: Set<Point>,
+): SharedLibertyKind {
+    if (whiteTargets.isEmpty()) return SharedLibertyKind.Neither
+    if (whiteTargets.any { it in bensonWhite }) return SharedLibertyKind.Neither
+    if (position.simpleKoCaptures(StoneColor.Black).isNotEmpty()) return SharedLibertyKind.Neither
+    if (position.simpleKoCaptures(StoneColor.White).isNotEmpty()) return SharedLibertyKind.Neither
     val strings = whiteStrings(position, whiteTargets)
-    if (strings.isEmpty()) return false
-    if (strings.any { attackerCanCapture(position, it, 0) }) return false
+    if (strings.isEmpty()) return SharedLibertyKind.Neither
+    if (strings.any { attackerCanCapture(position, it, 0) }) return SharedLibertyKind.Neither
     val whiteLibs = libertiesOfTargets(position, whiteTargets)
     val adjBlack = whiteLibs.flatMap { position.neighbors(it) }
         .filter { position.stones[it] == StoneColor.Black }.toSet()
-    if (adjBlack.isEmpty()) return false
-    if (adjBlack.any { it in bensonBlack }) return false
+    if (adjBlack.isEmpty()) return SharedLibertyKind.Neither
+    if (adjBlack.any { it in bensonBlack }) return SharedLibertyKind.Neither
     val blackLibs = libertiesOfTargets(position, adjBlack)
     val shared = whiteLibs.intersect(blackLibs)
-    if (whiteLibs.size != shared.size || shared.size < 2 || shared.size > 4) return false
-    if (shared.any { fillCapturesEither(position, it, whiteTargets, adjBlack) }) return false
-    for (point in shared) {
-        val next = position.play(point, StoneColor.Black) ?: continue
-        if (next.liberties(next.stringAt(point)).size < 2) continue
-        if (!ownerCanForceLife(next, whiteTargets)) return false
+    if (whiteLibs.size != shared.size || shared.size < 2 || shared.size > 4) {
+        return SharedLibertyKind.Neither
     }
-    return true
+    if (shared.any { fillCapturesEither(position, it, whiteTargets, adjBlack) }) {
+        return SharedLibertyKind.Neither
+    }
+    val realDame = shared.filter { !isFalseEye(position, it, StoneColor.White) }
+    if (realDame.size <= 1) return SharedLibertyKind.FalseEyeDead
+    // 2–4 口全共氣但做不成兩眼：點眼／破眼，不是雙活（8K 白 S19 黑 T18）。
+    if (!ownerCanForceLife(position, whiteTargets)) return SharedLibertyKind.Neither
+    return SharedLibertyKind.Seki
+}
+
+/** 假眼：幾乎被己方圍住但仍有一側對手，不是雙活共氣. */
+private fun isFalseEye(position: Position, point: Point, color: StoneColor): Boolean {
+    val nbs = position.neighbors(point)
+    if (nbs.isEmpty()) return false
+    val own = nbs.count { position.stones[it] == color }
+    val opp = nbs.count { position.stones[it] == color.opposite }
+    return opp > 0 && own >= nbs.size - 1
 }
 
 private fun whiteStrings(position: Position, whiteTargets: Set<Point>): List<Set<Point>> {
@@ -426,6 +504,58 @@ private fun floodNon(position: Position, start: Point, blocked: Set<Point>): Set
     return seen
 }
 
+/**
+ * 白氣以及貼著目標黑子的空點（8K T19：不是氣，是貼 T18 的打劫點）。
+ */
+internal fun whiteKoApproachPoints(position: Position, targets: Set<Point>): Set<Point> {
+    val white = whiteTargetsOf(targets.filter { it in position.stones }.toSet(), position)
+    if (white.isEmpty()) return emptySet()
+    val candidates = LinkedHashSet<Point>()
+    val seen = HashSet<Point>()
+    for (t in white) {
+        if (t !in position.stones || !seen.add(t)) continue
+        val string = position.stringAt(t)
+        seen.addAll(string)
+        for (p in string) {
+            for (n in position.neighbors(p)) {
+                if (n !in position.stones) candidates.add(n)
+                if (position.stones[n] == StoneColor.Black) {
+                    for (n2 in position.neighbors(n)) {
+                        if (n2 !in position.stones) candidates.add(n2)
+                    }
+                }
+            }
+        }
+    }
+    return candidates
+}
+
+/**
+ * 白一手能做成單劫、且該局面是劫殺（8K T18–S18–T17 後 T19，黑只能 S19 提劫）。
+ * 盤上還沒劫就因做不成兩眼／點眼判淨殺，是捷徑錯殺。
+ */
+internal fun whiteKoThrowIns(position: Position, targets: Set<Point>): Set<Point> {
+    val out = LinkedHashSet<Point>()
+    for (point in whiteKoApproachPoints(position, targets)) {
+        val next = position.play(point, StoneColor.White) ?: continue
+        val blackKos = next.simpleKoCaptures(StoneColor.Black)
+        val whiteKos = next.simpleKoCaptures(StoneColor.White)
+        if (blackKos.isEmpty() && whiteKos.isEmpty()) continue
+        val koPoints = blackKos + whiteKos
+        if (!koInvolvesTargets(next, koPoints, targets)) continue
+        if (canCaptureTargetBesidesKo(next, targets, koPoints)) continue
+        val nextOn = targets.filter { it in next.stones }.toSet()
+        if (classifyKo(next, targets, nextOn, bothPassed = false) == Outcome.KoKill) out.add(point)
+    }
+    return out
+}
+
+private fun whiteCanMakeKoKill(
+    position: Position,
+    targets: Set<Point>,
+    onBoard: Set<Point>,
+): Boolean = whiteKoThrowIns(position, targets).isNotEmpty()
+
 private fun classifyKo(
     position: Position,
     targets: Set<Point>,
@@ -456,6 +586,23 @@ private fun classifyKo(
     }
     if (bothPassed && blackWins == BasicLife.Seki && whiteWins == BasicLife.Seki) return Outcome.Seki
     return null
+}
+
+private fun koInvolvesTargets(
+    position: Position,
+    koPoints: Collection<Point>,
+    targets: Set<Point>,
+): Boolean {
+    val targetStones = targets.filter { it in position.stones }.toSet()
+    if (targetStones.isEmpty()) return false
+    for (ko in koPoints) {
+        for (n in position.neighbors(ko)) {
+            if (n in targetStones) return true
+            val stone = position.stones[n] ?: continue
+            if (stone == StoneColor.White && position.stringAt(n).any { it in targetStones }) return true
+        }
+    }
+    return false
 }
 
 private fun canCaptureTargetBesidesKo(

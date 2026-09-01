@@ -13,7 +13,7 @@
 | 解題入口、AND–OR、最長抵抗、報路徑 | `composeApp/src/commonMain/kotlin/com/neojou/tsumego/solve/Solver.kt` | `AlphaBetaSolver`、`Search.canForce`、`pickResist`／`pickRefute`、`formatSearchPath` |
 | 相關區、空手、必應區、區形 | `…/solve/RelevanceZone.kt` | `terminalRelevanceZone`、`dilate`、`isNullMove`、`retainMustPlay`、`zonePattern` |
 | 蒙地卡羅猜順序 | `…/solve/MonteCarlo.kt` | **有程式，未接入** `AlphaBetaSolver`／`Session` |
-| 終局分類、做活點、劫、雙活 | `…/classify/Classify.kt` | `classify`、`isSeki`、`deadlockSeki`、`attackerCanCapture`、`classifyKo`、`ownerCanForceLife`、`firstOwnerMoveToTwoEyes` |
+| 終局分類、做活點、劫、雙活 | `…/classify/Classify.kt` | `classify`、`isSeki`、`deadlockSeki`、`isFalseEyeDead`、`classifyKo`、`ownerCanForceLife`、`minOwnerMovesToTwoEyes`（不做活提子）、`firstOwnerMoveToTwoEyes` |
 | 對局：何時搜、路徑串流、應手落地 | `…/play/Session.kt` | `launchSearch`、`onPath`、`replyCache`、`DISPLAYED_SEARCH_PATHS` |
 | 殼：決策樹 | `…/play/PlayCopy.kt`、`…/play/DecisionTree.kt`、`…/Tsumego.kt` | 標題決策樹、三層縮排、不編號 |
 
@@ -30,13 +30,14 @@
 1. `winningBlack` 少（`countWinningBlackReplies`：黑有幾手仍能強迫）
 2. 非停優於停
 3. `proofPly` 大（黑最短勝枝還要多少 ply）
-4. `nodes` 多
-5. **做活點**（`firstOwnerMoveToTwoEyes`）
-6. 座標小：`file * 20 + rank`（A1 < A2 < B1）；停最後
+4. **黑剛下之鄰空**（僅非脫先。7K 老鼠偷油黑 T16 後 T15，不是 Q15。脫先時 S15 的鄰空 S14 不是應手，應做活點 T16）
+5. `nodes` **少**（證明灌水不是更頑強；Q15 節點多仍是邊上敗著）
+6. **做活點**（`firstOwnerMoveToTwoEyes`）
+7. 座標小：`file * 20 + rank`（A1 < A2 < B1）；停最後
 
 `pickRefute`（黑已不能強迫）：做活點若在反駁集合裡就下它；否則 `refuteLifeTier`（已無條件活 → 其它終局失敗 → 仍能做成活 → 其它），再比離兩眼還幾手，再座標。
 
-脫先（`blackPlayedAway`）：若做活點讓白能強迫活，不跑迭代加深，直接 `Refute` 並報一條路徑。
+脫先（`blackPlayedAway`）：做活點**這手後已 Benson**，或黑回來一手殺不掉且白仍能連填兩眼，才直接 `Refute`。不可把「黑永遠脫先、白連填到 Benson」當反駁——7K 黑 P18 後 liveAt=T18、`canLive=true`，但黑 T15 立刻淨殺。small_trick 黑 S19 白 R19 黑 S15：liveAt=T16 還要再填 S17，黑 S17 立刻無條件死，故 T16 是應手不是立刻失敗；黑 S13 後 S19 黑一手殺不掉，仍可反駁。
 
 UI「從路徑中思考最強應手...」＝證明完、尚未落下應手（`pickingReply`），不是樹裡的 C。
 
@@ -54,7 +55,10 @@ ADR-0015 標題寫 α-β／negamax。程式是：
 
 ```
 solve(position):                          # 輪白，黑剛下完
-  if 脫先 and 做活點能活: Refute(做活點)
+  if 脫先 and 做活點:
+    next = 白下做活點
+    if 已 Benson or (仍能連填兩眼 and 黑一手殺不掉): Refute(做活點)
+    # 否則搜尋：P18 後 T18 會被 T15 淨殺
   for d in 1..48:
     r = canForce(pos, White, passes, d, [])
     if r is Yes: return pickResist(d)
@@ -66,8 +70,9 @@ canForce(pos, toPlay, passes, depth, path):
   o = classify(pos)
   if 題型過:     emit 搜尋路徑; return Yes(ply=0, zone=terminalZone)
   if 終局 or 雙方已停: emit 搜尋路徑; return No(zone=terminalZone)
-  # 終局含劫殺、雙活。v1 殺棋兩者都不是過 → No → 決策樹白勝。見下節。
-  # 分類必須：旁劫不要凍成劫殺；兩串白棋的氣不要加總成假雙活。
+  # 終局含劫殺、雙活、點眼死形、做不成兩眼的無條件死。v1 殺棋只認無條件死為過。
+  # 分類必須：旁劫不要凍成劫殺；兩串白棋的氣不要加總成假雙活；
+  # 假眼不當共氣（點眼不是雙活）；做活不可提兩氣以上攻擊子（彎三點眼是對殺，不是活）。
   if TT hit: return TT
   if depth == 0: return Unknown
   if Black: r = orMoves(...)   # 任一 Yes 即可；保留最短 proofPly
@@ -90,7 +95,7 @@ andMoves:  # 白
   全 Yes → Yes(worstPly)
 ```
 
-候選手 `actions`：氣區空點（`relevantEmptyPoints`，不是相關區）、根上做活點、**黑剛下之鄰空**（`SolverInput.lastBlack`；7K 老鼠偷油黑 T15 後的 T16 不在氣區裡）、立刻讓黑無法過的白棋、提子、夾氣、氣、最後停。`guess` 參數現在沒人傳。
+候選手 `actions`：氣區空點（`relevantEmptyPoints`，不是相關區）、根上做活點、**黑剛下之鄰空**（`SolverInput.lastBlack`；7K 老鼠偷油黑 T15 後的 T16、one-more 黑 S17 後的 T17 都不在氣區裡——T17 與白 T15 中間隔著黑 T16，只靠鄰空才進搜尋）、**貼目標黑子的打劫點**（8K 黑 T18 白 S18 黑 T17 後的 T19 不是氣、不是 T17 鄰空，不搜就只剩 S17→黑勝，最長抵抗會變成 S19）、立刻讓黑無法過的白棋、提子、夾氣、氣、最後停。`guess` 參數現在沒人傳。Session `launchSearch` 一定帶 lastBlack。決策樹測必須傳，否則 T17–T18 丁四那枝根本不會出現（誤以為凍住）。測：`Kill7SolverTreeTest.afterS17TreeMustNotCallT19WhiteWin`、`Kill7BugLoopTest.afterS17WhiteT17IsInActionsAndT18NotWhiteWin`、`Kill8BugLoopTest.afterT18WhiteResistsAtS18NotS19`。
 
 路徑：`formatSearchPath` 結尾是黑勝／白勝。含停的路徑不報。Session 串流 `onPath`（計走完條數）與 `onPv`（決策樹葉子）；證明完 `onPathsComplete` 才 `pickingReply`。
 
@@ -200,7 +205,8 @@ classifyKo(pos, targets):
     兩邊假設都能 Benson 活 → 無條件活
     目標已提淨 → 無條件死
     單劫提、除劫點外提不到目標 → 劫殺   # 本題劫
-    做不成兩眼且劫仍在 → 劫殺           # 8K
+    做不成兩眼且劫仍在 → 劫殺           # 8K 提劫
+    白一手能做成上述劫殺 → 未定         # 8K T17，不可先淨殺
     否則 null                           # 旁劫（R19）
   雙方已停且两次假設都是雙活 → 雙活
   其它 → null
@@ -220,7 +226,7 @@ classifyKo(pos, targets):
 
 決策樹**不自己判斷雙活**。葉子只看 `classify`：`Outcome.Seki` 對殺棋不是過 → `Force.No` → 樹寫 **白勝** → 對局 **失敗**。若那枝其實還能淨殺，要改的是分類（ADR-0010、0014），不是 AND–OR 或顯示收束。
 
-`classify` 順序（ADR-0014）：提淨 → Benson 無條件活 → **雙活** → 劫 → 雙方已停則剩餘當死 → 做不成兩眼則無條件死 → 未定。雙活在「做不成活則死」之前，所以假雙活會擋住丁四／詰氣。
+`classify` 順序（ADR-0014）：提淨 → Benson 無條件活 → **雙活** → **假眼死形** → 劫 → 雙方已停則剩餘當死 → 做不成兩眼則無條件死 → 未定。雙活在「做不成活則死」之前，所以假雙活會擋住丁四／詰氣。點眼死形也必須在做活洪水之前：13K S19 的 P19 往 O19 灌空點 > 8，第 (6) 步會當成還能活。
 
 詞：CONTEXT「雙活」＝雙方靠共氣共存，不是無條件活。ADR-0010：不是把「未定」或「雙方已停」直接當雙活。
 
@@ -248,7 +254,6 @@ isSeki(pos, targets, bothPassed):
 deadlockSeki(pos, whiteTargets):
   if 白目標空 or 任一 Benson: return false
   if 任一方有單劫提: return false          # 單劫交給 classifyKo
-  if !ownerCanForceLife(pos, whiteTargets): return false   # 做不成兩眼 → 無條件死，不是雙活
   strings = 白目標在盤上的棋串（按串，不把氣加總）
   if 任一串 attackerCanCapture: return false               # 還能安全詰到提掉
 
@@ -259,11 +264,13 @@ deadlockSeki(pos, whiteTargets):
   if whiteLibs 不全是共氣: return false
   if shared 點數不在 2..4: return false
   if 任一共氣點 fillCapturesEither: return false           # 填下去立刻提掉對方
-  for p in shared:
-    黑下 p（合法且下完自己不入氣）後
-    if !ownerCanForceLife: return false                    # 詰一口氣就做不成兩眼
-  return true                                              # 靜態雙活
+  realDame = shared 裡不是假眼的點
+  if realDame ≤ 1: return FalseEyeDead                     # 點眼（13K S19），不是雙活
+  if !ownerCanForceLife: return Neither                    # 做不成兩眼不是雙活（8K 白S19黑T18）
+  return Seki
 ```
+
+`classify`：`Seki` → 雙活；`FalseEyeDead` → 無條件死。不要把點眼塞進 `ownerCanForceLife`（見下節）。
 
 ```
 attackerCanCapture(pos, stones, depth≤6):
@@ -283,15 +290,20 @@ fillCapturesEither(p):
   白下 p 提掉任一鄰近黑 → true
 ```
 
-`ownerCanForceLife`：目標色連下能否 Benson（眼位空點 > 8 直接當還能活）。假眼／單眼封死走這條，不是雙活。
+`ownerCanForceLife`：目標色連下能否 Benson（眼位空點 > 8 直接當還能活）。封死的單眼／兩眼空點走這條。**點眼死形不走這條**：2–4 口全共氣且真氣≤1 由 `isFalseEyeDead` 在雙活之後立刻無條件死。
 
 ### 對照題
 
 | 局面 | 為什麼 | 終局 |
 |---|---|---|
 | 老鼠偷油 T18–S17–T16–T15–T17 | 白**一串**，氣 Q15/R19/S16/T19 全共氣。Q15／R19 安全詰完仍剩 S16／T19 入氣，`canLive=true` | 雙活 → 殺棋白勝。測 `Kill7MouseOilResistTest.t18S17T16T15T17IsSekiKillFailure` |
-| one-more S17–T17–T18 | T18 **提掉 T17**，S17 是黑（可連 T16／T18 成丁四）。白裂成 S18–S19 與 T15 下邊**兩串**。S18–S19 氣只有 R19／T19，R19 安全再 T19 提掉 | **未定**，不是雙活。樹不可在 `白下 T17 -> 黑下 T18 -> 白勝` 停。測 `Kill7BugLoopTest.afterS17T17T18IsUnsettledNotSeki`、`Kill7SolverTreeTest` |
+| 老鼠偷油 T16–Q15–P15–P14–P18 | P18 脫先，liveAt=T18，`canLive=true`。舊捷徑直接 `Refute(T18)` → 樹上白勝／失敗。黑 T15 立刻無條件死 | **必須搜尋**。脫先只在黑一手殺不掉時才反駁。黑 T16 後應手 T15（鄰空），不是 Q15。測 `afterT16Q15P15P14P18T18T15IsKillSuccessNotWhiteWin`、`afterP18AwayMustNotRefuteAtT18`、`afterT16WhiteResistsAtT15` |
+| one-more S17–T17–T18 | T17 不是白氣（T15 與 T17 隔著黑 T16），只在 lastBlack 鄰空裡。T18 **提掉 T17**，S17 可連 T16／T18 成丁四。白裂成 S18–S19 與 T15 下邊**兩串**。S18–S19 氣只有 R19／T19，R19 安全再 T19 提掉 | **未定**，不是雙活。樹不可在 `白下 T17 -> 黑下 T18 -> 白勝` 停，且必須出現 `… -> 黑勝`。測 `Kill7BugLoopTest.afterS17T17T18IsUnsettledNotSeki`、`Kill7SolverTreeTest` |
 | small_trick S19–S17–T16–S18 | 4 共氣、填了當下提不到，但黑 S15 後 `canLive=false` | 詰氣／無條件死，不是雙活。測 `DeadShapeTest.smallTrickConnectThenT16S18IsUnsettledNotSeki` |
+| 13K R19–Q19–S19 | 一串 3 氣 P19/R18/T19 全共氣；R18、T19 是假眼，真氣只剩 P19。P19 安全詰氣，R18／T19 是入氣 | **點眼死形** → 無條件死／黑勝，不是雙活、不是未定。樹上不可 `黑下 S19 -> 白勝`。測 `Kill13BugLoopTest`、`Kill13SolverTreeTest` |
+| 8K S18–S19–T18 | 3 口全共氣（S17/T17/T19），T19 邊上看起來像假眼，S17–T17 是兩口眼位。`canLive=false` | **不是雙活**。誤判雙活會讓 T18 不算黑勝手，S19 的 proofPly 變長，最長抵抗選 S19 而不是做活點 T18。測 `Kill8BugLoopTest.afterS18S19T18IsDeadNotSeki`、`afterS18WhiteResistsAtT18NotS17` |
+| 8K S17–S19–T18 | 氣 S18/T17/T19 全共氣。T18 點眼做成彎三。舊做活 BFS 填三口提掉仍有三氣的 T18 才 Benson，`canLive=true` → 雙活 | **彎三死形** → 無條件死／黑勝。樹上不可 `白下 S19 -> 黑下 T18 -> 白勝`。測 `Kill8BugLoopTest.afterS17S19T18IsKillSuccessNotWhiteWin`、`Kill8SolverTreeTest` |
+| 8K T18–S18–T17 | 盤上還沒劫、S17 像假眼、`canLive=false`。白 T19 做成單劫，黑只能 S19 提劫。T19 不是氣、不是 T17 鄰空 | **未定**，不是淨殺。搜尋必須含 T19，否則只搜 S17→黑勝，根上誤選 S19。最長抵抗：S18–T17–T19 打劫白勝。測 `afterT18S18T17IsKoFightNotKillSuccess`、`afterT18WhiteResistsAtS18NotS19` |
 
 舊錯：把所有白目標的氣**加總**成一組 2–4 共氣。one-more T18 後 Q15+R19+S16+T19 長得像老鼠偷油，其實是兩串。
 
@@ -301,10 +313,75 @@ fillCapturesEither(p):
 
 還沒做／刻意不做：
 
-- 沒有丁四／盤角曲四形狀表；能殺就靠「按串詰氣」或「詰完做不成兩眼」落到未定／無條件死，再交給 AND–OR
+- 沒有丁四／盤角曲四形狀表；能殺就靠「按串詰氣」、點眼死形、或「詰完做不成兩眼」落到未定／無條件死，再交給 AND–OR
 - `attackerCanCapture` 不模擬白應手（攻擊方連填）
 - 入氣的填不當安全詰氣（倒撲／棄子要靠後續搜尋，不在分類裡演）
 - 路徑 A 仍要雙方已停且 targets 含黑白；殺棋只靠路徑 B
+- 一開始的 `deadlockSeki` **沒有**「假眼 ≠ 共氣」：2–4 口全共氣 + 安全詰氣提不掉 = 雙活。13K 點眼長得像老鼠偷油（剩氣全共、詰 R18／T19 會入氣），會凍成雙活／白勝。這是分類缺口，不是 AND–OR。
+- 做不成兩眼也不是雙活。8K 白 S19 黑 T18 三口全共、`canLive=false`：當成雙活後 T18 不是黑勝手，S19 的證明變深，最長抵抗選 S19 而不是做活點 T18。
+- 做活不可吃點眼。8K 黑 S17 白 S19 黑 T18 彎三：填三口提掉仍有三氣的 T18 才 Benson，是對殺。舊規則只禁一次提兩顆，`canLive=true` → 雙活 → 樹上白勝。
+
+---
+
+## 做不成兩眼則死（現況）
+
+這就是「黑脫先／當停，白連續落子仍做不成兩眼 → 無條件死 → 殺棋黑勝」。**不是**缺規則。ADR-0014 第 (6) 步、`ownerCanForceLife`。Session `applyBlack`：`classify` 已是無條件死就 **Success**，不 `launchSearch`。
+
+「黑 pass 一手」只有 1 ply，不夠當無條件死。現況是攻擊方**一直**脫先，目標色連填眼位，看能否 Benson。
+
+```
+ownerCanForceLife(pos, targets):
+  onBoard = 還在盤上的目標
+  if 空: return false
+  if 已提掉一部分目標:
+    if 局部眼位（氣＋再一圈）> 8: return true
+  else:
+    if 從氣灌出的空點 > 8: return true   # 13K S19 的 P19→O19 會走這裡，所以點眼不能靠這條
+  return minOwnerMovesToTwoEyes != null
+
+minOwnerMovesToTwoEyes:                      # BFS，最多 8 手、4000 節點
+  目標只剩一色
+  空點只從眼位（目標氣＋再一圈空點，最多 8 點）
+  目標色連下
+  一次提掉兩顆以上對方子 → 不算（對殺）
+  提掉開局時還有兩氣以上的攻擊子 → 不算（點眼不是眼內廢子；8K 彎三 T18）
+  開局已是一氣的單顆廢子仍可提
+  全部剩餘目標都 Benson → 還能活
+  否則 null → 做不成兩眼
+```
+
+`classify` 在雙活、**假眼死形**、劫之後：`!ownerCanForceLife` → 若白一手能走到劫殺則**未定**，否則 `UnconditionalDead`。殺棋過。不必把死子收到碗裡。假眼死形同樣：即將成劫不可當淨殺（8K T17）。
+
+### 對照：13K S19 點眼
+
+`docs/13K-kill.tsumego.json` 黑 R19 白 Q19 黑 S19。白一串，氣 P19／R18／T19 全與黑共。R18（三白一黑）、T19（邊上一白一黑）是假眼；P19 是真氣（牆外還有 O19）。
+
+人眼：點眼死形，黑勝。舊算法兩處都缺：
+
+1. **雙活**：`deadlockSeki` 把 2–4 口全共氣當成雙活。R18／T19 詰了會入氣，長得像老鼠偷油剩兩口入氣，分類成 `Seki` → 樹上 `黑下 S19 -> 白勝` → 對局失敗。
+2. **做不成兩眼**：就算不當雙活，`ownerCanForceLife` 從 P19 灌到 O19 空點 > 8，直接當還能活 → 未定。ADR-0014 第 (6) 步本來要抓封死的假眼，但洪水啟發式沒把「假眼 + 一口外氣」算進去。
+
+現況：共氣裡扣掉假眼，真氣≤1 → `isFalseEyeDead` → 無條件死。不把這條放進 `ownerCanForceLife`：收緊做活會改 `winningBlack`／做活點，small_trick 黑 S19 後應手會從 R19 漂成 T16／S17。測：`Kill13BugLoopTest`、`Kill13SolverTreeTest.afterR19TreeMustNotCallS19WhiteWin`、`SmallTrickSolverTest.afterS19WhiteResistsAtR19`。
+
+### 對照：8K S17–S19–T18 彎三
+
+`docs/8K-kill.tsumego.json` 黑 S17 白 S19 黑 T18。白氣 S18／T17／T19 全與黑共。T18 是點眼，空點成彎三。人眼：白做不成兩眼，黑勝。
+
+舊算法缺在**做活當對殺**：BFS 連填 S18／T17／T19，提掉開局仍有三氣的 T18，Benson 成功，`canLive=true`。雙活在「做不成兩眼」之前，三口全共氣 → `Seki` → 樹上 `白下 S19 -> 黑下 T18 -> 白勝` → 對局失敗。
+
+這不是缺「彎三形狀表」。ADR-0014 第 (6) 步的做活必須是填自己的眼位；提掉攻擊方是對殺。舊規則只禁「一次提兩顆」，一顆三氣的點眼漏掉了。求快把吃子當活，死活就錯。
+
+現況：做活不可提開局時還有兩氣以上的攻擊子 → `canLive=false` → 不是雙活 → 無條件死。測：`Kill8BugLoopTest.afterS17S19T18IsKillSuccessNotWhiteWin`、`Kill8SolverTreeTest.afterS17TreeMustNotCallS19T18WhiteWin`。
+
+同題 黑 T18 白 S18 黑 T17：盤上還沒單劫、S17 看起來像假眼、`canLive=false`，舊捷徑當淨殺／黑勝。其實白 T19 做成單劫，黑只能 S19 提劫。v1 淨殺才過，打劫失敗。不可因「劫還沒出現」就判無條件死。現況：白一手能走到**與目標有關**的劫殺、且黑除劫外提不掉目標 → 未定。牆上旁劫（開牆空出來的 Q13/P13）不算。T19 已是劫殺；S19 提劫仍是劫殺。測：`Kill8BugLoopTest.afterT18S18T17IsKoFightNotKillSuccess`、`afterT18S18T17SessionIsNotSuccess`、`DeadShapeTest.kill8KoTakeIsKoKillNotUnconditionalDead`。
+
+### 對照：9K Q19 提五子
+
+`docs/9K-kill-20260828.tsumego.json` 黑 P18 白 P17 黑 Q17 白 Q18 黑 Q16 白 P19 黑 Q19，提掉 Q18 與 R16–R19。盤上目標還剩 M18/M19、N17/O17、O19（P17/P19 是白但不是目標）。
+
+人眼：剩餘白做不成兩眼，應立刻黑勝。舊實作在「已提掉一部分目標」之後仍用整盤氣洪水，且做活 BFS 走出 `O18…L17` 提掉包圍的 L17–L18 才 Benson，`classify` 未定，白搜 200s。現況：已提子則改用局部眼位，且做活不可提兩氣以上攻擊子（含一次兩顆）。此形無條件死 → 對局成功。測：`Kill9DeadShapeTest.afterQ19CaptureRemainingWhiteCannotMakeTwoEyes`。
+
+還沒做：沒有死形表（刀把五、盤角曲四、彎三當形狀模板）；眼位 > 8 仍當未定，交給 AND–OR。彎三能殺是因為做活不算對殺，不是因為形狀表。
 
 ---
 
@@ -410,7 +487,7 @@ on enter: if proven[ttKey] return it
 
 ## 改搜尋時從哪裡下手
 
-1. 證明對不對：`canForce`／分類／劫殺／雙活／相關區；測 `SessionSolverTest`、`SmallTrickSolverTest`、`Kill8BugLoopTest`、`Kill7BugLoopTest`、`Kill7SolverTreeTest`
+1. 證明對不對：`canForce`／分類／劫殺／雙活／點眼死形／做不成兩眼／相關區；測 `SessionSolverTest`、`SmallTrickSolverTest`、`Kill8BugLoopTest`、`Kill8SolverTreeTest`、`Kill7BugLoopTest`、`Kill7SolverTreeTest`、`Kill9DeadShapeTest`、`Kill13BugLoopTest`、`Kill13SolverTreeTest`
 2. 應手穩不穩：`resistOrder`、`pickRefute`；測最長抵抗與做活點
 3. 有路徑沒應手：先量 `Kill7ReplyLagTest` 的 firstPath／complete／done，再考慮證明輪 `yesKids` 交給 `pickResist`。顯示收束不會讓搜尋變快
 4. 要更快：接上 `zonePattern`、加深 TT、或新 `Solver`（df-pn 等）
