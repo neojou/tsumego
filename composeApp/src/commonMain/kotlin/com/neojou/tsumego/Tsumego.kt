@@ -56,6 +56,16 @@ import com.neojou.tsumego.io.saveProblemText
 import com.neojou.tsumego.library.ProblemLibrary
 import com.neojou.tsumego.library.ProblemLoad
 import com.neojou.tsumego.library.Samples
+import com.neojou.tsumego.solverLdrz.LdrzBoardScreen
+import com.neojou.tsumego.solverLdrz.LdrzJson
+import com.neojou.tsumego.solverLdrz.LdrzLoad
+import com.neojou.tsumego.solverLdrz.LdrzOutput
+import com.neojou.tsumego.solverLdrz.LdrzSession
+import com.neojou.tsumego.solverLdrz.LdrzSolver
+import com.neojou.tsumego.solverLdrz.ldrzMenuBarItem
+import com.neojou.tsumego.solverLdrz.ldrzPickProblemJson
+import com.neojou.tsumego.solverLdrz.ldrzReadResultFiles
+import com.neojou.tsumego.solverLdrz.ldrzWriteResultFiles
 import com.neojou.tsumego.play.CAPTURE_RETRACT_MS
 import com.neojou.tsumego.play.PLACE_DROP_MS
 import com.neojou.tsumego.play.PlayStatus
@@ -79,7 +89,9 @@ import kotlin.time.TimeSource
 import com.neojou.tsumego.ui.BoardView
 import com.neojou.tsumego.ui.ConfirmScreen
 import com.neojou.tsumego.ui.playTargetMarks
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private const val TAG = "Tsumego"
 
@@ -91,6 +103,7 @@ fun Tsumego() {
     var draft by remember { mutableStateOf<ConfirmDraft?>(null) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var currentProblem by remember { mutableStateOf<Problem?>(null) }
+    var ldrz by remember { mutableStateOf(LdrzSession()) }
 
     fun startProblem(problem: Problem) {
         val playable = problem.withOpenWallMargin()
@@ -99,6 +112,7 @@ fun Tsumego() {
             errorMessage = err
             return
         }
+        ldrz = LdrzSession()
         currentProblem = playable
         draft = null
         session = Session(problem = playable, scope = scope)
@@ -141,6 +155,70 @@ fun Tsumego() {
                 onClick = { startProblem(sample.problem) },
             )
         },
+        extraMenus = listOf(
+            ldrzMenuBarItem(
+                enabled = ldrz.menuEnabled,
+                onOpen = {
+                    scope.launch {
+                        val picked = ldrzPickProblemJson() ?: return@launch
+                        when (val loaded = LdrzJson.parse(picked.text, picked.name)) {
+                            is LdrzLoad.Ok -> {
+                                session = null
+                                currentProblem = null
+                                draft = null
+                                ldrz = LdrzSession(problem = loaded.problem)
+                            }
+                            is LdrzLoad.Err -> errorMessage = loaded.message
+                        }
+                    }
+                },
+                onCalculate = {
+                    val problem = ldrz.problem
+                    if (problem == null) {
+                        errorMessage = "請先 Open study-LD-RZ 題目"
+                        return@ldrzMenuBarItem
+                    }
+                    ldrz = ldrz.copy(calculating = true, showText = "計算中…")
+                    scope.launch {
+                        val result = withContext(Dispatchers.Default) { LdrzSolver().solve(problem) }
+                        val json = LdrzOutput.resultJson(problem, result)
+                        val sgf = LdrzOutput.uctTreeSgf(problem, result)
+                        val writeErr = ldrzWriteResultFiles(problem.stem, json, sgf)
+                        ldrz = ldrz.copy(
+                            calculating = false,
+                            result = result,
+                            outputJson = json,
+                            outputSgf = sgf,
+                            showText = writeErr
+                                ?: "已寫出 ${LdrzOutput.resultJsonPath(problem.stem)}\n與 ${LdrzOutput.uctTreePath(problem.stem)}",
+                        )
+                        if (writeErr != null) errorMessage = writeErr
+                    }
+                },
+                onShow = {
+                    val problem = ldrz.problem
+                    if (problem == null) {
+                        errorMessage = "請先 Open study-LD-RZ 題目"
+                        return@ldrzMenuBarItem
+                    }
+                    scope.launch {
+                        val fromDisk = ldrzReadResultFiles(problem.stem)
+                        val jsonText = fromDisk?.first ?: ldrz.outputJson
+                        val sgfText = fromDisk?.second ?: ldrz.outputSgf
+                        if (jsonText == null) {
+                            errorMessage = "請先 Calculate"
+                            return@launch
+                        }
+                        val parsed = LdrzOutput.parseResultJson(jsonText)
+                        if (parsed == null) {
+                            errorMessage = "result JSON 不合法"
+                            return@launch
+                        }
+                        ldrz = ldrz.copy(showText = LdrzOutput.summary(parsed, sgfText))
+                    }
+                },
+            ),
+        ),
     )
 
     LaunchedEffect(Unit) {
@@ -164,6 +242,7 @@ fun Tsumego() {
                     },
                     onCancel = { draft = null },
                 )
+                ldrz.problem != null -> LdrzBoardScreen(ldrz, Modifier.fillMaxSize())
                 currentSession != null -> PlayScreen(currentSession)
                 else -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text(emptyPlayHint(), style = MaterialTheme.typography.bodyLarge)

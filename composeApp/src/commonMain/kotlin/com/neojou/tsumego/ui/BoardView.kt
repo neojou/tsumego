@@ -202,6 +202,7 @@ fun BoardView(
     stones: Map<Point, StoneColor>,
     targets: Set<Point> = emptySet(),
     lastMove: Point? = null,
+    regionMarks: Set<Point> = emptySet(),
     overlayImage: ImageBitmap? = null,
     imageGrid: ImageGrid? = null,
     enabled: Boolean = true,
@@ -267,6 +268,10 @@ fun BoardView(
             drawOverlayGrid(overlay, edges)
             drawOverlayCoordinates(overlay, measurer)
             val spacing = min(overlay.spacingX, overlay.spacingY)
+            drawRegionMarks(regionMarks, spacing) { point ->
+                val c = overlay.center(point)
+                Offset(c.x, c.y)
+            }
             for ((point, color) in retract) {
                 val c = overlay.center(point)
                 drawClamStone(
@@ -304,6 +309,7 @@ fun BoardView(
             drawGrid(geom, edges)
             drawStars(geom)
             drawCoordinates(geom, measurer)
+            drawRegionMarks(regionMarks, spacing) { geom.center(it) }
             for ((point, color) in retract) {
                 drawClamStone(
                     geom.center(point), spacing, color, oblique = true,
@@ -320,6 +326,26 @@ fun BoardView(
                 )
             }
         }
+    }
+}
+
+private fun DrawScope.drawRegionMarks(
+    marks: Set<Point>,
+    spacing: Float,
+    centerOf: (Point) -> Offset,
+) {
+    if (marks.isEmpty()) return
+    val s = spacing * 0.14f
+    val stroke = Stroke(width = spacing * 0.03f)
+    val ink = Color(0xFF2E7D32).copy(alpha = 0.7f)
+    for (point in marks) {
+        val c = centerOf(point)
+        drawRect(
+            color = ink,
+            topLeft = Offset(c.x - s, c.y - s),
+            size = androidx.compose.ui.geometry.Size(s * 2f, s * 2f),
+            style = stroke,
+        )
     }
 }
 

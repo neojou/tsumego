@@ -23,6 +23,7 @@ fun shellMenuBarItems(
     onEdit: () -> Unit,
     onAbout: () -> Unit,
     sampleItems: List<MyTopMenuItem> = emptyList(),
+    extraMenus: List<MyTopMenuItem> = emptyList(),
 ): List<MyTopMenuItem> = listOf(
     MyTopMenuItem(
         id = "import",
@@ -42,6 +43,7 @@ fun shellMenuBarItems(
             sampleItems = sampleItems,
         ),
     ),
+) + extraMenus + listOf(
     MyTopMenuItem(id = "edit", label = "Edit", enabled = editEnabled, onClick = onEdit),
     MyTopMenuItem(id = "about", label = "About", onClick = onAbout),
 )

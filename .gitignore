@@ -5,6 +5,8 @@ mygrok
 
 #private files
 docs/tests/
+docs/refs/
+result/
 
 # dependencies
 /node_modules
