@@ -42,8 +42,8 @@ object LdrzOutput {
         val black = problem.stones.filterValues { it == StoneColor.Black }.keys.sorted()
         val white = problem.stones.filterValues { it == StoneColor.White }.keys.sorted()
         val crucial = problem.crucialStones().sorted()
-        val region = problem.region.sorted()
-        val rzone = region.joinToString(",") { LdrzCoord.toSgf(it, size) }
+        val rzonePts = result.zone.ifEmpty { problem.region }.sorted()
+        val rzone = rzonePts.joinToString(",") { LdrzCoord.toSgf(it, size) }
         val win = result.firstMoveSgf.orEmpty()
         val pl = if (problem.turnColor == StoneColor.Black) "B" else "W"
         return buildString {
@@ -52,7 +52,7 @@ object LdrzOutput {
             appendProps("AW", white, size)
             append("PL[$pl]")
             appendProps("TR", crucial, size)
-            appendProps("MA", region, size)
+            appendProps("MA", rzonePts, size)
             append("C[RZONE:$rzone\nWIN:$win\nstatus:${result.status.name}]")
             var color = problem.turnColor
             for (point in result.principalLine) {

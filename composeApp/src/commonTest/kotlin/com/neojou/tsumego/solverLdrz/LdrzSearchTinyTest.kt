@@ -30,6 +30,15 @@ class LdrzSearchTinyTest {
     }
 
     @Test
+    fun reportsARelevanceZoneOnAlive() {
+        val problem = twoEyeLiveProblem()
+        val result = LdrzSolver().solve(problem)
+        assertEquals(LdrzStatus.ALIVE, result.status)
+        assertTrue(result.zone.isNotEmpty())
+        assertTrue(result.zoneCount == result.zone.size)
+    }
+
+    @Test
     fun missingCrucialIsError() {
         val problem = twoEyeLiveProblem().copy(blackCrucial = emptySet(), whiteCrucial = emptySet())
         val result = LdrzSolver().solve(problem)
@@ -37,7 +46,7 @@ class LdrzSearchTinyTest {
     }
 }
 
-private fun twoEyeLiveProblem(): LdrzProblem {
+internal fun twoEyeLiveProblem(): LdrzProblem {
     fun p(label: String) = Point.parseOrThrow(label)
     val black = listOf(
         "A1", "B1", "C1", "D1",

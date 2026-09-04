@@ -60,6 +60,7 @@ import com.neojou.tsumego.solverLdrz.LdrzBoardScreen
 import com.neojou.tsumego.solverLdrz.LdrzJson
 import com.neojou.tsumego.solverLdrz.LdrzLoad
 import com.neojou.tsumego.solverLdrz.LdrzOutput
+import com.neojou.tsumego.solverLdrz.LdrzProgress
 import com.neojou.tsumego.solverLdrz.LdrzSession
 import com.neojou.tsumego.solverLdrz.LdrzSolver
 import com.neojou.tsumego.solverLdrz.ldrzMenuBarItem
@@ -178,21 +179,68 @@ fun Tsumego() {
                         errorMessage = "請先 Open study-LD-RZ 題目"
                         return@ldrzMenuBarItem
                     }
-                    ldrz = ldrz.copy(calculating = true, showText = "計算中…")
+                    ldrz = ldrz.copy(
+                        calculating = true,
+                        showText = "決定相關區…",
+                        relevanceZone = emptySet(),
+                    )
                     scope.launch {
-                        val result = withContext(Dispatchers.Default) { LdrzSolver().solve(problem) }
-                        val json = LdrzOutput.resultJson(problem, result)
-                        val sgf = LdrzOutput.uctTreeSgf(problem, result)
-                        val writeErr = ldrzWriteResultFiles(problem.stem, json, sgf)
-                        ldrz = ldrz.copy(
-                            calculating = false,
-                            result = result,
-                            outputJson = json,
-                            outputSgf = sgf,
-                            showText = writeErr
-                                ?: "已寫出 ${LdrzOutput.resultJsonPath(problem.stem)}\n與 ${LdrzOutput.uctTreePath(problem.stem)}",
-                        )
-                        if (writeErr != null) errorMessage = writeErr
+                        var latest = LdrzProgress("決定相關區…")
+                        val ticker = launch {
+                            while (true) {
+                                delay(120)
+                                val p = latest
+                                ldrz = ldrz.copy(
+                                    calculating = true,
+                                    showText = buildString {
+                                        append(p.phase)
+                                        if (p.nodes > 0) {
+                                            append('\n')
+                                            append("節點 ").append(p.nodes)
+                                        }
+                                        if (p.zone.isNotEmpty()) {
+                                            append('\n')
+                                            append("相關區 ").append(p.zone.size).append(" 點")
+                                        }
+                                    },
+                                    relevanceZone = p.zone,
+                                )
+                            }
+                        }
+                        try {
+                            val result = withContext(Dispatchers.Default) {
+                                LdrzSolver(onProgress = { latest = it }).solve(problem)
+                            }
+                            val json = LdrzOutput.resultJson(problem, result)
+                            val sgf = LdrzOutput.uctTreeSgf(problem, result)
+                            val writeErr = ldrzWriteResultFiles(problem.stem, json, sgf)
+                            ldrz = ldrz.copy(
+                                calculating = false,
+                                result = result,
+                                outputJson = json,
+                                outputSgf = sgf,
+                                relevanceZone = result.zone,
+                                showText = buildString {
+                                    append("狀態: ").append(result.status.name).append('\n')
+                                    append("第一手: ").append(result.firstMoveSgf ?: "（無）")
+                                    result.firstMove?.let { append(" (").append(it.label).append(')') }
+                                    append('\n')
+                                    append("節點數: ").append(result.numSimulations).append('\n')
+                                    append("耗時: ").append(result.timeSeconds).append(" 秒\n")
+                                    append("相關區: ").append(result.zoneCount).append(" 點")
+                                    if (writeErr != null) {
+                                        append('\n').append(writeErr)
+                                    } else {
+                                        append('\n')
+                                        append("已寫出 ${LdrzOutput.resultJsonPath(problem.stem)}\n")
+                                        append("與 ${LdrzOutput.uctTreePath(problem.stem)}")
+                                    }
+                                },
+                            )
+                            if (writeErr != null) errorMessage = writeErr
+                        } finally {
+                            ticker.cancel()
+                        }
                     }
                 },
                 onShow = {

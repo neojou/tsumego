@@ -56,7 +56,7 @@ fun LdrzBoardScreen(session: LdrzSession, modifier: Modifier = Modifier) {
             style = MaterialTheme.typography.bodyLarge,
         )
         if (session.calculating) {
-            Text("計算中…", style = MaterialTheme.typography.bodyLarge)
+            Text(session.showText ?: "計算中…", style = MaterialTheme.typography.bodyLarge)
         }
         Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             BoardView(
@@ -65,7 +65,8 @@ fun LdrzBoardScreen(session: LdrzSession, modifier: Modifier = Modifier) {
                 stones = problem.stones.filterKeys { rect.contains(it) },
                 targets = problem.crucialStones(),
                 lastMove = firstMove,
-                regionMarks = problem.regionMarks(),
+                regionMarks = if (session.relevanceZone.isNotEmpty()) emptySet() else problem.regionMarks(),
+                zoneFill = session.relevanceZone,
                 enabled = false,
                 albedo = rememberBoardAlbedo(),
                 onClick = {},

@@ -203,6 +203,7 @@ fun BoardView(
     targets: Set<Point> = emptySet(),
     lastMove: Point? = null,
     regionMarks: Set<Point> = emptySet(),
+    zoneFill: Set<Point> = emptySet(),
     overlayImage: ImageBitmap? = null,
     imageGrid: ImageGrid? = null,
     enabled: Boolean = true,
@@ -268,6 +269,10 @@ fun BoardView(
             drawOverlayGrid(overlay, edges)
             drawOverlayCoordinates(overlay, measurer)
             val spacing = min(overlay.spacingX, overlay.spacingY)
+            drawZoneFill(zoneFill, spacing) { point ->
+                val c = overlay.center(point)
+                Offset(c.x, c.y)
+            }
             drawRegionMarks(regionMarks, spacing) { point ->
                 val c = overlay.center(point)
                 Offset(c.x, c.y)
@@ -304,6 +309,7 @@ fun BoardView(
                 drawWood(wood, spacing)
             }
             drawWoodBevel(wood)
+            drawZoneFill(zoneFill, spacing) { geom.center(it) }
             drawWallCuts(grid, edges, spacing)
             drawWalls(grid, edges, spacing)
             drawGrid(geom, edges)
@@ -326,6 +332,26 @@ fun BoardView(
                 )
             }
         }
+    }
+}
+
+fun zoneFillColor(): Color = Color(0xFFC5E1A5)
+
+private fun DrawScope.drawZoneFill(
+    points: Set<Point>,
+    spacing: Float,
+    centerOf: (Point) -> Offset,
+) {
+    if (points.isEmpty()) return
+    val half = spacing * 0.5f
+    val fill = zoneFillColor()
+    for (point in points) {
+        val c = centerOf(point)
+        drawRect(
+            color = fill,
+            topLeft = Offset(c.x - half, c.y - half),
+            size = androidx.compose.ui.geometry.Size(spacing, spacing),
+        )
     }
 }
 

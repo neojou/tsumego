@@ -37,6 +37,20 @@ data class LdrzProblem(
         return Position(rect, edges, onBoard, setOf(key))
     }
 
+    /**
+     * Local 題目盤 for search: bounding box of a 1-dilate around 關鍵子,
+     * 牆 on sides that are not the 19-road 真盤邊. Stops the automask skirt
+     * from leaking liberties so Benson UCA can fire.
+     */
+    fun toSearchPosition(): Position {
+        val full = toPosition()
+        val core = LdrzZone.seed(this, full, dilateTimes = 1)
+        val (rect, edges) = boardGeometry(core, boardSize)
+        val onBoard = stones.filterKeys { rect.contains(it) }
+        val key = Position.stoneKey(rect, onBoard)
+        return Position(rect, edges, onBoard, setOf(key))
+    }
+
     fun crucialStones(): Set<Point> = blackCrucial + whiteCrucial
 
     fun regionMarks(): Set<Point> = region.filter { it !in stones }.toSet()

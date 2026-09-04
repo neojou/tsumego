@@ -16,6 +16,7 @@ data class LdrzResult(
     val numSimulations: Int = 0,
     val timeSeconds: Double = 0.0,
     val zoneCount: Int = 0,
+    val zone: Set<Point> = emptySet(),
     val principalLine: List<Point> = emptyList(),
     val message: String = "",
 )
